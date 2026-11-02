@@ -55,6 +55,11 @@ header{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var
 .hrow{display:flex;align-items:center;gap:8px;padding-block:12px 8px}
 .brand{font-size:11px;letter-spacing:.08em;color:var(--muted);font-weight:600;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .bell{flex:none;height:38px;border:0;border-radius:999px;padding:0 12px;background:var(--sun);color:var(--surface);font-weight:600;font-size:13px;display:inline-flex;align-items:center;gap:4px}
+.badge{display:inline-block;font-size:11px;font-weight:700;border-radius:5px;padding:1px 7px;color:#fff}
+.b-new{background:var(--accent)}.b-edit{background:var(--sat)}.b-del{background:var(--sun)}
+.chg{display:block;margin-top:3px;font-size:12px;color:var(--muted);line-height:1.45}
+.nitem[disabled]{cursor:default;opacity:1}
+.news .nitem .nt{display:block;-webkit-line-clamp:unset;overflow:visible}
 .newtag{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.04em;color:var(--surface);background:var(--sun);border-radius:4px;padding:0 4px;margin-left:4px;vertical-align:1px}
 .ev.isnew{outline:1.5px solid var(--sun);outline-offset:-1px}
 .sync{display:inline-flex;align-items:center;gap:5px;border:0;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:600;letter-spacing:0;background:var(--surface2);color:var(--muted)}
@@ -652,18 +657,36 @@ function mergeConfig(c){
 }
 let me = null;
 function stamp(){ return me ? { at:Date.now(), by:me } : { at:Date.now() }; }
+function descEvent(e){ return `${evTitle(e)} (${evLabel(e)})`; }
+function tlabel(e){ return e.start ? fmtTime(e.start) + (e.end ? ' ~ ' + fmtTime(e.end) : '') : '하루 종일'; }
+function diffEvent(a, b){
+  const c = [];
+  if (!a) return c;
+  if (a.date !== b.date) c.push(`날짜: ${dLabel(a.date)} → ${dLabel(b.date)}`);
+  if ((a.start||'') !== (b.start||'') || (a.end||'') !== (b.end||'')) c.push(`시간: ${tlabel(a)} → ${tlabel(b)}`);
+  if ((a.title||'') !== (b.title||'') || (a.emoji||'') !== (b.emoji||'')) c.push(`내용: ${evTitle(a)} → ${evTitle(b)}`);
+  if (evLabel(a) !== evLabel(b)) c.push(`대상: ${evLabel(a)} → ${evLabel(b)}`);
+  if ((a.memo||'') !== (b.memo||'')) c.push(b.memo ? `메모: ${b.memo}` : '메모 삭제');
+  return c;
+}
+function descAnniv(a){ return `${annivIcon(a)}${annivTitle(a)} · ${annivDateLabel(a)}`; }
+async function logChange(act, type, ref, title, date, changes){
+  if (local || !db) return;
+  if (act === 'edit' && changes && !changes.length) return;
+  try { await db.collection('log').add({ act, type, ref:String(ref||''), title:String(title||''), date:date||'', changes:changes||[], ...stamp() }); } catch(e){}
+}
 const api = {
-  async addEvent(e){ if (local){ state.events.push({ id:'l'+Date.now()+Math.random().toString(36).slice(2,6), ...e }); lsave(); render(); return; } await db.collection('events').add({ ...e, ...stamp() }); },
-  async setEvent(id,e){ if (local){ const i = state.events.findIndex(x=>x.id===id); if (i>=0) state.events[i] = { id, ...e }; lsave(); render(); return; } await db.doc('events/'+id).set({ ...e, ...stamp() }); },
-  async delEvent(id){ if (local){ state.events = state.events.filter(x=>x.id!==id); lsave(); render(); return; } await db.doc('events/'+id).delete(); },
-  async setWork(ds,w){ if (local){ state.work[ds] = w; lsave(); render(); return; } await db.doc('work/'+ds).set({ ...w, ...stamp() }); },
-  async delWork(ds){ if (local){ delete state.work[ds]; lsave(); render(); return; } await db.doc('work/'+ds).delete(); },
-  async addAnniv(a){ if (local){ state.annivs.push({ id:'a'+Date.now(), ...a }); lsave(); render(); return; } await db.collection('annivs').add({ ...a, ...stamp() }); },
-  async setAnniv(id,a){ if (local){ const i = state.annivs.findIndex(x=>x.id===id); if (i>=0) state.annivs[i] = { id, ...a }; lsave(); render(); return; } await db.doc('annivs/'+id).set({ ...a, ...stamp() }); },
-  async delAnniv(id){ if (local){ state.annivs = state.annivs.filter(x=>x.id!==id); lsave(); render(); return; } await db.doc('annivs/'+id).delete(); },
-  async addNotice(n){ if (local){ state.notices.push({ id:'n'+Date.now(), ...n, at:Date.now() }); lsave(); render(); return; } await db.collection('notices').add({ ...n, ...stamp() }); },
-  async setNotice(id,n){ if (local){ const i = state.notices.findIndex(x=>x.id===id); if (i>=0) state.notices[i] = { ...state.notices[i], ...n }; lsave(); render(); return; } await db.doc('notices/'+id).update({ ...n, ...stamp() }); },
-  async delNotice(id){ if (local){ state.notices = state.notices.filter(x=>x.id!==id); lsave(); render(); return; } await db.doc('notices/'+id).delete(); },
+  async addEvent(e){ if (local){ state.events.push({ id:'l'+Date.now()+Math.random().toString(36).slice(2,6), ...e }); lsave(); render(); return; } const ref = await db.collection('events').add({ ...e, ...stamp() }); logChange('new','event',ref.id,descEvent(e),e.date); },
+  async setEvent(id,e){ if (local){ const i = state.events.findIndex(x=>x.id===id); if (i>=0) state.events[i] = { id, ...e }; lsave(); render(); return; } const before = state.events.find(x => x.id === id); await db.doc('events/'+id).set({ ...e, ...stamp() }); logChange(before ? 'edit' : 'new','event',id,descEvent(e),e.date,diffEvent(before, e)); },
+  async delEvent(id){ if (local){ state.events = state.events.filter(x=>x.id!==id); lsave(); render(); return; } const before = state.events.find(x => x.id === id); await db.doc('events/'+id).delete(); if (before) logChange('del','event',id,descEvent(before),before.date); },
+  async setWork(ds,w){ if (local){ state.work[ds] = w; lsave(); render(); return; } const before = state.work[ds]; await db.doc('work/'+ds).set({ ...w, ...stamp() }); if (!before || before.course !== w.course) logChange(before ? 'edit' : 'new','work',ds,workText(ds,w),ds, before ? [`${workText(ds,before)} → ${workText(ds,w)}`] : []); },
+  async delWork(ds){ if (local){ delete state.work[ds]; lsave(); render(); return; } const before = state.work[ds]; await db.doc('work/'+ds).delete(); if (before) logChange('del','work',ds,workText(ds,before),ds); },
+  async addAnniv(a){ if (local){ state.annivs.push({ id:'a'+Date.now(), ...a }); lsave(); render(); return; } const ref = await db.collection('annivs').add({ ...a, ...stamp() }); logChange('new','anniv',ref.id,descAnniv(a),''); },
+  async setAnniv(id,a){ if (local){ const i = state.annivs.findIndex(x=>x.id===id); if (i>=0) state.annivs[i] = { id, ...a }; lsave(); render(); return; } const before = state.annivs.find(x => x.id === id); await db.doc('annivs/'+id).set({ ...a, ...stamp() }); const ch = before && descAnniv(before) !== descAnniv(a) ? [`${descAnniv(before)} → ${descAnniv(a)}`] : []; logChange('edit','anniv',id,descAnniv(a),'',ch); },
+  async delAnniv(id){ if (local){ state.annivs = state.annivs.filter(x=>x.id!==id); lsave(); render(); return; } const before = state.annivs.find(x => x.id === id); await db.doc('annivs/'+id).delete(); if (before) logChange('del','anniv',id,descAnniv(before),''); },
+  async addNotice(n){ if (local){ state.notices.push({ id:'n'+Date.now(), ...n, at:Date.now() }); lsave(); render(); return; } const ref = await db.collection('notices').add({ ...n, ...stamp() }); logChange('new','notice',ref.id,n.text.split('\n')[0],''); },
+  async setNotice(id,n){ if (local){ const i = state.notices.findIndex(x=>x.id===id); if (i>=0) state.notices[i] = { ...state.notices[i], ...n }; lsave(); render(); return; } const before = state.notices.find(x => x.id === id); await db.doc('notices/'+id).update({ ...n, ...stamp() }); const ch = []; if (before && before.text !== n.text) ch.push(`내용: ${before.text.split('\n')[0]} → ${n.text.split('\n')[0]}`); if (before && (before.until||'') !== (n.until||'')) ch.push(`기한: ${before.until || '없음'} → ${n.until || '없음'}`); logChange('edit','notice',id,n.text.split('\n')[0],'',ch); },
+  async delNotice(id){ if (local){ state.notices = state.notices.filter(x=>x.id!==id); lsave(); render(); return; } const before = state.notices.find(x => x.id === id); await db.doc('notices/'+id).delete(); if (before) logChange('del','notice',id,before.text.split('\n')[0],''); },
   async setConfig(c){ if (local){ state.config = c; lsave(); render(); return; } await db.doc('config/main').set(c); }
 };
 function fail(e){
@@ -678,7 +701,7 @@ function browserName(){ const u = navigator.userAgent;
   if (/KAKAOTALK/i.test(u)) return '카카오톡 안 브라우저'; if (/NAVER\(inapp/i.test(u)) return '네이버 앱 안 브라우저';
   if (/SamsungBrowser/i.test(u)) return '삼성 인터넷'; if (/CriOS|Chrome/i.test(u)) return '크롬'; if (/Safari/i.test(u)) return '사파리'; return '기타'; }
 state.seenAt = null; let names = {};
-state.myWho = null; state.members = {};
+state.myWho = null; state.members = {}; state.log = [];
 const WHOKEY = 'dasom-cal-who';
 try { const v = localStorage.getItem(WHOKEY); if (PERSONS.includes(v)) state.myWho = v; } catch(e){}
 function renderWho(){
@@ -707,13 +730,10 @@ async function setWho(k){
 }
 const SEENKEY = 'dasom-cal-seen';
 function isNew(x){ return state.seenAt != null && x && x.by && me && x.by !== me && (x.at||0) > state.seenAt; }
+const KIND = { event:'일정', work:'근무', anniv:'기념일', notice:'공지' };
 function newItems(){
-  const out = [];
-  state.events.forEach(e => { if (isNew(e)) out.push({ at:e.at, by:e.by, kind:'일정', date:e.date, text:evTitle(e), who:evLabel(e), go:{ ev:e.id } }); });
-  Object.entries(state.work).forEach(([ds,w]) => { if (isNew(w)) out.push({ at:w.at, by:w.by, kind:'근무', date:ds, text:workText(ds,w), who:catLabel('hus'), go:{ work:ds } }); });
-  state.annivs.forEach(a => { if (isNew(a)) out.push({ at:a.at, by:a.by, kind:'기념일', date:'', text:annivIcon(a)+annivTitle(a)+' · '+annivDateLabel(a), who:'', go:{ anniv:a.id } }); });
-  state.notices.forEach(n => { if (isNew(n)) out.push({ at:n.at, by:n.by, kind:'공지', date:'', text:(n.emoji?n.emoji+' ':'')+n.text.split('\n')[0], who:'', go:{ notice:n.id } }); });
-  return out.sort((a,b) => b.at - a.at);
+  if (state.seenAt == null || !me) return [];
+  return state.log.filter(x => x.by && x.by !== me && (x.at||0) > state.seenAt).sort((a,b) => b.at - a.at);
 }
 async function resolveNames(ids){
   const need = ids.filter(id => !(id in names)); if (!need.length || !user?.profiles) return;
@@ -726,20 +746,34 @@ function renderBell(){
 }
 async function bellSheet(){
   const items = newItems();
-  await resolveNames([...new Set(items.map(x => x.by))]);
   const ago = t => { const m = Math.round((Date.now() - t) / 60000); return m < 60 ? `${Math.max(1,m)}분 전` : m < 1440 ? `${Math.round(m/60)}시간 전` : `${Math.round(m/1440)}일 전`; };
+  const who = id => state.members[id] ? catLabel(state.members[id]) : '가족';
+  const BADGE = { new:['신규','b-new'], edit:['수정','b-edit'], del:['삭제','b-del'] };
+  const link = x => {
+    if (x.act === 'del') return 'disabled';
+    if (x.type === 'event' && state.events.some(e => e.id === x.ref)) return `data-ev="${esc(x.ref)}"`;
+    if (x.type === 'work' && state.work[x.ref]) return `data-work="${esc(x.ref)}"`;
+    if (x.type === 'anniv' && state.annivs.some(a => a.id === x.ref)) return `data-anniv="${esc(x.ref)}"`;
+    if (x.type === 'notice' && state.notices.some(n => n.id === x.ref)) return `data-notice="${esc(x.ref)}"`;
+    return 'disabled';
+  };
+  const counts = { new:0, edit:0, del:0 }; items.forEach(x => counts[x.act] = (counts[x.act]||0) + 1);
   openSheet(`<div class="sh"><h3>새 소식</h3><button class="ghost" data-close>닫기</button></div>
-    <p class="help" style="margin:0">마지막으로 확인한 뒤에 가족이 추가하거나 바꾼 항목이에요.</p>
-    <div class="notices" style="margin:0">${items.map(x => `<button class="nitem" ${x.go.ev?`data-ev="${esc(x.go.ev)}"`:x.go.work?`data-work="${x.go.work}"`:x.go.anniv?`data-anniv="${esc(x.go.anniv)}"`:`data-notice="${esc(x.go.notice)}"`}><span class="nt"><b>${esc(state.members[x.by] ? catLabel(state.members[x.by]) : (names[x.by] || '가족'))}</b> · ${x.kind}${x.date?` · ${dLabel(x.date)}`:''}<br>${esc(x.text)}${x.who?` <span style="color:var(--muted);font-size:12px">(${esc(x.who)})</span>`:''}</span><span class="nd">${ago(x.at)}</span></button>`).join('')}</div>
-    <div class="btns"><button class="primary" data-seenall>모두 확인</button></div>`);
+    ${items.length ? `<div class="btns" style="gap:6px">${['new','edit','del'].filter(k => counts[k]).map(k => `<span class="badge ${BADGE[k][1]}">${BADGE[k][0]} ${counts[k]}</span>`).join('')}</div>
+    <div class="notices news" style="margin:0">${items.map(x => `<button class="nitem" ${link(x)}><span class="nt"><span class="badge ${BADGE[x.act][1]}">${BADGE[x.act][0]}</span> <b>${esc(who(x.by))}</b> · ${KIND[x.type]||''}${x.date ? ` · ${dLabel(x.date)}` : ''}<br><span style="${x.act==='del'?'text-decoration:line-through;color:var(--muted)':''}">${esc(x.title)}</span>${(x.changes||[]).length ? `<span class="chg">${x.changes.map(c => esc(c)).join('<br>')}</span>` : ''}</span><span class="nd">${ago(x.at)}</span></button>`).join('')}</div>
+    <div class="btns"><button class="primary" data-seenall>모두 확인</button></div>`
+    : '<p style="margin:0;color:var(--muted)">새로 바뀐 내용이 없어요.</p>'}`);
 }
 async function markSeen(){
   const t = Date.now(); state.seenAt = t;
   try { localStorage.setItem(SEENKEY, String(t)); } catch(e){}
   if (db && me) { try { await db.collection('data/users/' + me).doc('state').set({ seenAt:t }); } catch(e){} }
   closeSheet(); render(); toast('모두 확인했어요');
+  const old = state.log.filter(x => (x.at||0) < t - 60 * 864e5).slice(0, 50);
+  for (const x of old) { try { await db.doc('log/' + x.id).delete(); } catch(e){ break; } }
 }
 async function initSeen(){
+  setTimeout(() => { if (wantNews && !state._newsShown) { state._newsShown = true; bellSheet(); } }, 600);
   let ls = null; try { ls = +localStorage.getItem(SEENKEY) || null; } catch(e){}
   if (db && me) {
     try {
@@ -974,6 +1008,7 @@ async function boot(){
   db.collection('work').onSnapshot(s => { const w = {}; s.docs.forEach(d => { w[d.id] = d.data(); }); state.work = w; render(); }, onErr);
   db.collection('annivs').onSnapshot(s => { state.annivs = s.docs.map(d => ({ id:d.id, ...d.data() })); render(); }, onErr);
   db.collection('members').onSnapshot(s => { const m = {}; s.docs.forEach(d => { if (PERSONS.includes(d.data().who)) m[d.id] = d.data().who; }); state.members = m; if (state.loaded) maybeAskWho(); render(); }, onErr);
+  db.collection('log').onSnapshot(s => { state.log = s.docs.map(d => ({ id:d.id, ...d.data() })); renderBell(); }, onErr);
   db.collection('notices').onSnapshot(s => { state.notices = s.docs.map(d => ({ id:d.id, ...d.data() })); renderNotices(); }, onErr);
   db.doc('config/main').onSnapshot(s => { state.config = mergeConfig(s.exists ? s.data() : null); render(); renderPreview(); }, onErr);
 }
@@ -1308,6 +1343,7 @@ function goBack(){
 window.addEventListener('hashchange', () => {
   const h = location.hash.slice(1);
   if (h === 'edit') return;
+  if (h === 'news') { try { history.replaceState(null, '', '#' + viewHash()); } catch(e){} bellSheet(); return; }
   if (!$('#sheet').hidden) closeSheet(true);
   else sheetHashed = false;
   if (h === viewHash()) return;
@@ -1534,6 +1570,7 @@ $('#quick').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.metaK
 $('#addBtn').addEventListener('click', addDrafts);
 
 // 뷰 상태 기억 (이 기기)
+const wantNews = location.hash === '#news';
 state.view = 'month'; state.cursor = today0();
 const _render = render;
 render = function(){ _render(); try { localStorage.setItem('dasom-cal-view', state.view); } catch(e){}
