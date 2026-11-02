@@ -828,8 +828,10 @@ async function fbConnect(){
   const app = AP.initializeApp(cfg);
   const auth = A.getAuth(app);
   let fs;
-  try { fs = F.initializeFirestore(app, { localCache: F.persistentLocalCache({ tabManager: F.persistentMultipleTabManager() }) }); }
-  catch(e){ fs = F.getFirestore(app); }
+  const slowNet = (() => { try { return localStorage.getItem('fc-longpoll') === '1'; } catch(e){ return false; } })();
+  const opts = { experimentalForceLongPolling: true };
+  try { fs = F.initializeFirestore(app, { ...opts, localCache: slowNet ? F.memoryLocalCache() : F.persistentLocalCache({ tabManager: F.persistentMultipleTabManager() }) }); }
+  catch(e){ try { fs = F.initializeFirestore(app, opts); } catch(e2){ fs = F.getFirestore(app); } }
   FB = { AP, A, F, app, auth, fs, cfg };
   let u = await new Promise(res => { const off = A.onAuthStateChanged(auth, x => { off(); res(x); }); });
   if (!u) u = await loginFlow();
@@ -1469,7 +1471,7 @@ document.addEventListener('click', ev => {
   if (t.dataset.setwho) { setWho(t.dataset.setwho); return; }
   if (t.hasAttribute('data-bell')) { bellSheet(); return; }
   if (t.hasAttribute('data-seenall')) { markSeen(); return; }
-  if (t.hasAttribute('data-reconnect')) { location.reload(); return; }
+  if (t.hasAttribute('data-reconnect')) { try { localStorage.setItem('fc-longpoll', '1'); } catch(e){} location.reload(); return; }
   if (t.hasAttribute('data-sync')) { syncHelp(); return; }
   if (t.hasAttribute('data-migrate')) { migrateLocal(); return; }
   if (t.hasAttribute('data-noticelist')) { navTo('notice'); return; }
