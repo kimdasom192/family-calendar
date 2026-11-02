@@ -1,9 +1,9 @@
-// Firebase 웹앱 설정 — Firebase 콘솔 > 프로젝트 설정 > 내 앱 > SDK 설정 및 구성에서 복사한 값을 넣어요.
+// Firebase 웹앱 설정 (공개되어도 괜찮은 값이에요. 실제 보호는 firestore.rules 와 로그인 코드가 해요.)
 window.FIREBASE_CONFIG = {
-  apiKey: "",
-  authDomain: "",
-  projectId: "",
-  storageBucket: "",
-  messagingSenderId: "",
-  appId: ""
+  apiKey: "AIzaSyD4CClgKtGJpVI9fGBysr_ohsnvKFI_K8k",
+  authDomain: "family-calendar-de1cc.firebaseapp.com",
+  projectId: "family-calendar-de1cc",
+  storageBucket: "family-calendar-de1cc.firebasestorage.app",
+  messagingSenderId: "234486142291",
+  appId: "1:234486142291:web:b62f96ff9327ced2623da6"
 };
