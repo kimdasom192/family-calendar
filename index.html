@@ -672,6 +672,11 @@ function fail(e){
 }
 
 let syncState = 'loading', leftoversChecked = false;
+let connStage = '시작', lastErr = '';
+function inApp(){ return /KAKAOTALK|NAVER\(inapp|Instagram|FBAN|FBAV|Line\/|DaumApps|everytimeApp|; wv\)/i.test(navigator.userAgent); }
+function browserName(){ const u = navigator.userAgent;
+  if (/KAKAOTALK/i.test(u)) return '카카오톡 안 브라우저'; if (/NAVER\(inapp/i.test(u)) return '네이버 앱 안 브라우저';
+  if (/SamsungBrowser/i.test(u)) return '삼성 인터넷'; if (/CriOS|Chrome/i.test(u)) return '크롬'; if (/Safari/i.test(u)) return '사파리'; return '기타'; }
 state.seenAt = null; let names = {};
 state.myWho = null; state.members = {};
 const WHOKEY = 'dasom-cal-who';
@@ -752,8 +757,8 @@ function checkLocalLeftovers(){
 }
 function setSync(k){
   syncState = k; const el = $('#sync'); if (!el) return;
-  el.className = 'sync ' + ({ shared:'ok', local:'bad', readonly:'', loading:'' }[k] || '');
-  el.textContent = { shared:'가족과 공유 중', local:'이 폰에만 저장 중', readonly:'보기 전용', loading:'연결 중' }[k];
+  el.className = 'sync ' + ({ shared:'ok', local:'bad', readonly:'', loading:'', slow:'bad', error:'bad' }[k] || '');
+  el.textContent = { shared:'가족과 공유 중', local:'이 폰에만 저장 중', readonly:'보기 전용', loading:'연결 중', slow:'연결 안 됨 · 눌러 확인', error:'연결 오류 · 눌러 확인' }[k];
 }
 function syncHelp(){
   if (syncState === 'shared') {
@@ -761,6 +766,14 @@ function syncHelp(){
     openSheet(`<div class="sh"><h3>가족과 공유 중</h3><button class="ghost" data-close>닫기</button></div>
       <p style="margin:0">지금 넣는 일정은 가족 달력에 저장돼서 가족 모두의 휴대폰에 바로 보여요.</p>
       ${n ? `<div class="note" style="margin:0">이 휴대폰에만 따로 저장돼 있던 항목이 ${n}건 있어요. 공유 달력으로 옮길 수 있어요.</div><div class="btns"><button class="primary" data-migrate>공유 달력으로 옮기기</button></div>` : ''}`);
+    return;
+  }
+  if (syncState === 'slow' || syncState === 'error' || syncState === 'loading') {
+    openSheet(`<div class="sh"><h3>${syncState === 'error' ? '연결 오류' : '연결이 안 되고 있어요'}</h3><button class="ghost" data-close>닫기</button></div>
+      <div class="codes"><div><span>멈춘 단계</span><b>${esc(connStage)}</b></div><div><span>오류</span><b>${esc(lastErr || '없음')}</b></div><div><span>브라우저</span><b>${esc(browserName())}</b></div></div>
+      ${inApp() ? '<div class="note" style="margin:0">카카오톡·네이버 같은 앱 안에서 열린 화면이에요. 오른쪽 아래(또는 위) <b>⋮</b> 를 눌러 <b>다른 브라우저로 열기</b>로 크롬(아이폰은 사파리)에서 열어 주세요.</div>' : ''}
+      <p style="margin:0">인터넷 연결을 확인하고 아래 버튼을 눌러 주세요. 계속 안 되면 이 화면을 캡처해서 보내 주세요.</p>
+      <div class="btns"><button class="primary" data-reconnect>다시 연결</button></div>`);
     return;
   }
   if (syncState === 'readonly') { openSheet(`<div class="sh"><h3>보기 전용</h3><button class="ghost" data-close>닫기</button></div><p style="margin:0">이 계정은 보기만 할 수 있어요. 관리자에게 권한을 받아 주세요.</p>`); return; }
@@ -807,7 +820,11 @@ async function fbConnect(){
   const cfg = window.FIREBASE_CONFIG;
   if (!cfg || !cfg.apiKey) { showLoginMsg('아직 사이트 준비가 끝나지 않았어요.', '저장 공간(Firebase) 연결 정보가 들어가면 바로 쓸 수 있어요.'); throw new Error('noconfig'); }
   const base = `https://www.gstatic.com/firebasejs/${FBV}/`;
-  const [AP, A, F] = await Promise.all([import(base + 'firebase-app.js'), import(base + 'firebase-auth.js'), import(base + 'firebase-firestore.js')]);
+  connStage = '프로그램 불러오기';
+  let AP, A, F;
+  try { [AP, A, F] = await Promise.all([import(base + 'firebase-app.js'), import(base + 'firebase-auth.js'), import(base + 'firebase-firestore.js')]); }
+  catch(e){ lastErr = '프로그램을 불러오지 못함'; throw e; }
+  connStage = '로그인 확인';
   const app = AP.initializeApp(cfg);
   const auth = A.getAuth(app);
   let fs;
@@ -820,6 +837,7 @@ async function fbConnect(){
   if (!PERSONS.includes(who)) { await A.signOut(auth); throw new Error('unknown user'); }
   state.myWho = who; try { localStorage.setItem(WHOKEY, who); } catch(e){}
   state.members = { ...state.members, [u.uid]: who };
+  connStage = '일정 불러오기';
   const dbx = makeDb(F, fs);
   dbx.doc('members/' + u.uid).set({ who, at:Date.now() }).catch(() => {});
   A.onAuthStateChanged(auth, x => { if (!x) location.reload(); });
@@ -933,13 +951,15 @@ function accountSheet(){
 }
 async function boot(){
   render(); setSync('loading');
-  try { [db, user] = await fbConnect(); } catch(e){ db = null; if (String(e && e.message) === 'noconfig') return; }
+  if (inApp()) showNote('카카오톡·네이버 앱 안에서 열린 화면이에요. 잘 안 되면 ⋮ 메뉴의 \'다른 브라우저로 열기\'로 크롬(아이폰은 사파리)에서 열어 주세요.');
+  const connTimer = setTimeout(() => { if (syncState === 'loading') setSync('slow'); }, 12000);
+  try { [db, user] = await fbConnect(); } catch(e){ db = null; if (String(e && e.message) === 'noconfig') { clearTimeout(connTimer); return; } lastErr = lastErr || String(e && (e.code || e.message) || e); }
   if (!db) {
     local = true;
     const L = lload();
     state.events = L.events || []; state.work = L.work || {}; state.notices = L.notices || []; state.annivs = L.annivs || []; state.config = mergeConfig(L.config);
     state.loaded = true;
-    setSync('local'); setTimeout(maybeAskWho, 300);
+    clearTimeout(connTimer); setSync(lastErr ? 'error' : 'local'); setTimeout(maybeAskWho, 300);
     showNote('⚠ 지금은 가족 달력에 연결되지 않아 이 휴대폰에만 저장돼요. 인터넷 연결을 확인하고 다시 열어 주세요.');
     render(); return;
   }
@@ -947,7 +967,7 @@ async function boot(){
   try { const can = user?.can ? await user.can('data.write') : null; if (can === false) { state.readOnly = true; setSync('readonly'); showNote('보기 전용으로 열렸어요. 일정을 추가하려면 편집 권한이 필요해요.'); } } catch(e){}
   const timer = setTimeout(() => { if (!state.loaded) showNote('일정을 불러오는 중이에요. 연결이 느리면 잠시 후 다시 열어 주세요.'); }, 10000);
   let got = 0; const ready = (snap) => { if (!snap.metadata.fromCache) { got++; if (got >= 1) { state.loaded = true; clearTimeout(timer); if (!state.readOnly && !local) { hideNote(); setSync('shared'); checkLocalLeftovers(); } if (state.seenAt == null) initSeen(); setTimeout(maybeAskWho, 300);  } } };
-  const onErr = e => { clearTimeout(timer); if (e.code !== 'revoked') showNote('일정을 불러오지 못했어요. 페이지를 다시 열어 주세요.'); };
+  const onErr = e => { clearTimeout(timer); lastErr = (e && (e.message || e.code)) || 'unknown'; setSync('error'); if (e.code !== 'revoked') showNote('일정을 불러오지 못했어요. 위쪽 빨간 표시를 눌러 확인해 주세요.'); };
   db.collection('events').onSnapshot(s => { state.events = s.docs.map(d => ({ id:d.id, ...d.data() })); ready(s); render(); }, onErr);
   db.collection('work').onSnapshot(s => { const w = {}; s.docs.forEach(d => { w[d.id] = d.data(); }); state.work = w; render(); }, onErr);
   db.collection('annivs').onSnapshot(s => { state.annivs = s.docs.map(d => ({ id:d.id, ...d.data() })); render(); }, onErr);
@@ -1449,6 +1469,7 @@ document.addEventListener('click', ev => {
   if (t.dataset.setwho) { setWho(t.dataset.setwho); return; }
   if (t.hasAttribute('data-bell')) { bellSheet(); return; }
   if (t.hasAttribute('data-seenall')) { markSeen(); return; }
+  if (t.hasAttribute('data-reconnect')) { location.reload(); return; }
   if (t.hasAttribute('data-sync')) { syncHelp(); return; }
   if (t.hasAttribute('data-migrate')) { migrateLocal(); return; }
   if (t.hasAttribute('data-noticelist')) { navTo('notice'); return; }
