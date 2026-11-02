@@ -804,7 +804,7 @@ function makeDb(F, fs){
     id:ref.id, path,
     get: async () => wrapDocSnap(await F.getDoc(ref)),
     set: d => F.setDoc(ref, d), update: d => F.updateDoc(ref, d), delete: () => F.deleteDoc(ref),
-    onSnapshot: (next, err) => F.onSnapshot(ref, x => next(wrapDocSnap(x)), e => err && err({ code:mapCode(e.code), message:e.message })),
+    onSnapshot: (next, err) => F.onSnapshot(ref, { includeMetadataChanges:true }, x => next(wrapDocSnap(x)), e => err && err({ code:mapCode(e.code), message:e.message })),
     collection: p => colRef(path + '/' + p)
   }; };
   const colRef = path => { const c = F.collection(fs, path); return {
@@ -812,7 +812,7 @@ function makeDb(F, fs){
     doc: id => docRef(id ? path + '/' + id : F.doc(c).path),
     add: async d => docRef((await F.addDoc(c, d)).path),
     get: async () => { const x = await F.getDocs(c); return { docs:x.docs.map(wrapDocSnap), size:x.size, empty:x.empty, metadata:x.metadata }; },
-    onSnapshot: (next, err) => F.onSnapshot(c, x => next({ docs:x.docs.map(wrapDocSnap), size:x.size, empty:x.empty, metadata:x.metadata }), e => err && err({ code:mapCode(e.code), message:e.message }))
+    onSnapshot: (next, err) => F.onSnapshot(c, { includeMetadataChanges:true }, x => next({ docs:x.docs.map(wrapDocSnap), size:x.size, empty:x.empty, metadata:x.metadata }), e => err && err({ code:mapCode(e.code), message:e.message }))
   }; };
   return { doc:docRef, collection:colRef };
 }
