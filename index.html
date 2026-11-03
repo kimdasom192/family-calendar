@@ -1241,7 +1241,9 @@ function detectCard(app, s){
   return '';
 }
 function parseNotice(app, title, text, at){
-  const raw = [title, text].filter(Boolean).join('\n').replace(/\r/g, '');
+  const raw = [title, text].filter(Boolean).join('\n').replace(/\r/g, '').replace(/\s*\|\s*/g, '\n');
+  if (typeof at === 'string') at = +at.replace(/[^\d]/g, '') || 0;
+  if (at && at < 1e12) at = at * 1000;
   const card = detectCard(app, raw);
   let amount = 0;
   for (const m of raw.matchAll(/([0-9][0-9,]{0,13})\s*원/g)) {
