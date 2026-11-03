@@ -984,6 +984,7 @@ async function importData(file){
   Object.entries(j.work||{}).forEach(([ds, w]) => writes.push(['work/' + ds, w]));
   (j.annivs||[]).forEach(a => { const { id, ...d } = a; writes.push(['annivs/' + id, d]); });
   (j.notices||[]).forEach(n => { const { id, ...d } = n; writes.push(['notices/' + id, d]); });
+  (j.ledger||[]).forEach(x => { const { id, ...d } = x; writes.push(['ledger/' + (id || ('imp' + Math.random().toString(36).slice(2, 12))), { src:'import', cancelled:false, review:false, at:Date.now(), ...d }]); });
   if (j.config) writes.push(['config/main', j.config]);
   for (let i = 0; i < writes.length; i += 400) {
     const b = F.writeBatch(fs);
@@ -998,7 +999,7 @@ function accountSheet(){
     <p style="margin:0"><b>${esc(catLabel(who))}</b>(으)로 들어와 있어요. 이름 없이 적은 일정은 ${esc(catLabel(who))} 일정으로 들어가요.</p>
     <div class="fld"><label for="ac_code">내 코드 바꾸기 (6자리 이상)</label><div class="inrow"><input id="ac_code" inputmode="numeric" maxlength="12" style="flex:1;min-width:0;border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:9px 11px"><button class="primary" id="ac_save">바꾸기</button></div></div>
     <div class="help" id="ac_msg"></div>
-    ${who === 'me' ? `<div class="fld"><label for="ac_file">기존 달력 데이터 가져오기 (.json)</label><input id="ac_file" type="file" accept=".json,application/json"></div>` : ''}
+    ${true ? `<div class="fld"><label for="ac_file">데이터 가져오기 (.json · 일정·가계부 파일)</label><input id="ac_file" type="file" accept=".json,application/json"></div>` : ''}
     <div class="btns"><button class="danger" id="ac_out">이 휴대폰에서 나가기</button></div>`,
   root => {
     const msg = root.querySelector('#ac_msg');
