@@ -25,7 +25,7 @@ img{max-width:100%}
 :root{
   --bg:#F3F6F1; --surface:#FFFFFF; --surface2:#EAF0E7; --ink:#1D2A21; --muted:#66756A; --line:#D9E2D5;
   --accent:#3E7A4D; --accent-ink:#FFFFFF; --sun:#C8443E; --sat:#3568B0;
-  --c-me:#D25C74; --c-hus:#3474BE; --c-couple:#8259C4; --c-kid1:#1B9AA8; --c-kid2:#E0742A; --c-kids:#C99A12; --c-family:#2C9466; --c-work:#2E3C55; --c-elder:#9A6247;
+  --c-me:#D25C74; --c-hus:#3474BE; --c-couple:#8259C4; --c-kid1:#1B9AA8; --c-kid2:#E0742A; --c-kids:#C99A12; --c-family:#2C9466; --c-work:#2E3C55; --c-elder:#9A6247; --warn:#B9770A;
   --tint:12%;
   --f-display:"Gowun Batang","Nanum Myeongjo",serif;
   --f-body:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
@@ -34,12 +34,12 @@ img{max-width:100%}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --bg:#121814; --surface:#1A221D; --surface2:#222C25; --ink:#E6EDE6; --muted:#97A69A; --line:#2E3A31;
   --accent:#7DBE8B; --accent-ink:#0F1A12; --sun:#F07C74; --sat:#7EA8EA;
-  --c-me:#F08AA0; --c-hus:#6FA5E8; --c-couple:#B092F0; --c-kid1:#55CBD6; --c-kid2:#F59A5E; --c-kids:#E8C34E; --c-family:#5FC896; --c-work:#9FB0CF; --c-elder:#D9A486;
+  --c-me:#F08AA0; --c-hus:#6FA5E8; --c-couple:#B092F0; --c-kid1:#55CBD6; --c-kid2:#F59A5E; --c-kids:#E8C34E; --c-family:#5FC896; --c-work:#9FB0CF; --c-elder:#D9A486; --warn:#F0B44E;
   --tint:22%; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#121814; --surface:#1A221D; --surface2:#222C25; --ink:#E6EDE6; --muted:#97A69A; --line:#2E3A31;
   --accent:#7DBE8B; --accent-ink:#0F1A12; --sun:#F07C74; --sat:#7EA8EA;
-  --c-me:#F08AA0; --c-hus:#6FA5E8; --c-couple:#B092F0; --c-kid1:#55CBD6; --c-kid2:#F59A5E; --c-kids:#E8C34E; --c-family:#5FC896; --c-work:#9FB0CF; --c-elder:#D9A486;
+  --c-me:#F08AA0; --c-hus:#6FA5E8; --c-couple:#B092F0; --c-kid1:#55CBD6; --c-kid2:#F59A5E; --c-kids:#E8C34E; --c-family:#5FC896; --c-work:#9FB0CF; --c-elder:#D9A486; --warn:#F0B44E;
   --tint:22%; color-scheme:dark}
 *{box-sizing:border-box}
 html,body{background:var(--bg);overscroll-behavior-y:contain}
@@ -54,12 +54,35 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 header{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);border-bottom:1px solid var(--line)}
 .hrow{display:flex;align-items:center;gap:8px;padding-block:12px 8px}
 .brand{font-size:11px;letter-spacing:.08em;color:var(--muted);font-weight:600;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.bell{flex:none;height:38px;border:0;border-radius:999px;padding:0 12px;background:var(--sun);color:var(--surface);font-weight:600;font-size:13px;display:inline-flex;align-items:center;gap:4px}
+.bell{flex:none;border:0;border-radius:999px;padding:1px 9px;background:var(--sun);color:var(--surface);font-weight:700;font-size:11px;letter-spacing:0;display:inline-flex;align-items:center;gap:3px}
 .badge{display:inline-block;font-size:11px;font-weight:700;border-radius:5px;padding:1px 7px;color:#fff}
 .b-new{background:var(--accent)}.b-edit{background:var(--sat)}.b-del{background:var(--sun)}
 .chg{display:block;margin-top:3px;font-size:12px;color:var(--muted);line-height:1.45}
 .nitem[disabled]{cursor:default;opacity:1}
 .news .nitem .nt{display:block;-webkit-line-clamp:unset;overflow:visible}
+.b-warn{background:var(--warn)}
+.mstats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin-bottom:12px}
+.mstats div{background:var(--surface);padding:10px 12px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.mstats span{font-size:12px;color:var(--muted)}
+.mstats b{font-size:16px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.out{color:var(--sun)} .in{color:var(--accent)}
+.bars{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;display:flex;flex-direction:column;gap:12px}
+.bar .top{display:flex;justify-content:space-between;gap:8px;font-size:13px;font-variant-numeric:tabular-nums}
+.bar .top span:first-child{font-weight:600}
+.bar .trk{height:8px;border-radius:99px;background:var(--surface2);overflow:hidden;margin-top:5px}
+.bar .fill{height:100%;border-radius:99px;background:var(--accent)}
+.bar.warn .fill{background:var(--warn)} .bar.over .fill{background:var(--sun)}
+.bar .pct{font-weight:700} .bar.warn .pct,.bar.warn .warnline{color:var(--warn)} .bar.over .pct,.bar.over .warnline{color:var(--sun)}
+.warnline{font-size:12px;font-weight:600;margin-top:4px}
+.mrow{display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 12px;border:0;border-top:1px solid var(--line);background:none;width:100%;text-align:left}
+.items .mrow:first-child{border-top:0}
+.mrow .tm{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.mrow .amt{font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.mrow .mm{min-width:0;display:flex;flex-direction:column;gap:3px}
+.mrow .mm b{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mrow .tags{display:flex;gap:4px;flex-wrap:wrap;font-size:11px;color:var(--muted)}
+.mrow.cx .amt,.mrow.cx b{text-decoration:line-through;color:var(--muted)}
+.chipx{border:1px solid var(--line);border-radius:999px;padding:0 6px}
 .newtag{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.04em;color:var(--surface);background:var(--sun);border-radius:4px;padding:0 4px;margin-left:4px;vertical-align:1px}
 .ev.isnew{outline:1.5px solid var(--sun);outline-offset:-1px}
 .sync{display:inline-flex;align-items:center;gap:5px;border:0;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:600;letter-spacing:0;background:var(--surface2);color:var(--muted)}
@@ -72,7 +95,7 @@ header{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var
 .whopick button[aria-pressed="true"]{background:var(--c);color:var(--surface)}
 .sync.bad{color:var(--surface);background:var(--sun)}
 .sync.bad::before{background:var(--surface)}
-.title{font-family:var(--f-display);font-size:24px;line-height:1.15;margin:0;text-wrap:balance}
+.title{font-family:var(--f-display);font-size:clamp(20px,6vw,24px);line-height:1.15;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .grow{flex:1;min-width:0}
 .ibtn{width:38px;height:38px;border-radius:50%;border:1px solid var(--line);background:var(--surface);display:grid;place-items:center;flex:none}
 .ibtn svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
@@ -166,7 +189,7 @@ main{padding-block:12px 220px}
 .emo-grid button{height:40px;border:0;border-radius:8px;background:none;font-size:20px}
 .emo-grid button[aria-pressed="true"]{background:color-mix(in srgb,var(--accent) 22%,transparent)}
 .emo-grid button.none{font-size:11px;color:var(--muted)}
-.hback{flex:none;height:38px;border:0;background:var(--ink);color:var(--bg);border-radius:999px;padding:0 14px 0 11px;font-weight:600;font-size:14px}
+.hback{flex:none;width:38px;height:38px;border:0;background:var(--ink);color:var(--bg);border-radius:50%;font-weight:700;font-size:20px;line-height:1;display:grid;place-items:center;padding:0 2px 2px 0}
 .back{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:4px 12px;font-size:13px;margin-bottom:10px}
 .addday{width:100%;border:1px dashed var(--accent);background:color-mix(in srgb,var(--accent) 6%,transparent);color:var(--accent);border-radius:var(--r);padding:11px;font-weight:600;margin-top:10px}
 .kindtabs{display:flex;gap:6px;flex-wrap:wrap}
@@ -256,12 +279,12 @@ main{padding-block:12px 220px}
 <header>
   <div class="wrap">
     <div class="hrow">
-      <button class="hback" id="hback" data-back hidden aria-label="뒤로 가기">‹ 뒤로</button>
+      <button class="hback" id="hback" data-back hidden aria-label="뒤로 가기" title="뒤로">‹</button>
       <div class="grow">
-        <div class="brand" id="brand">우리집 가족달력 <button class="sync" id="sync" data-sync>연결 중</button><button class="sync who" id="whoami" data-whoami hidden></button></div>
+        <div class="brand" id="brand">우리집 가족달력 <button class="sync" id="sync" data-sync>연결 중</button><button class="sync who" id="whoami" data-whoami hidden></button><button class="bell" id="bell" data-bell hidden></button></div>
         <h1 class="title" id="label">2026년 11월</h1>
       </div>
-      <button class="bell" id="bell" data-bell hidden></button>
+      <button class="ibtn" id="moneyBtn" data-gomoney title="가계부" aria-label="가계부"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2.5"/><path d="M3 11h18"/><path d="M15.5 15.5h2.5"/><path d="M6 7l8.5-3 1.5 3"/></svg></button>
       <button class="ibtn" id="workMode" aria-pressed="false" title="남편 근무 입력 모드" aria-label="남편 근무 입력 모드">
         <svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="14" rx="3"/><path d="M4 10h16M8 17v3M16 17v3"/><circle cx="8" cy="13.5" r=".6"/><circle cx="16" cy="13.5" r=".6"/></svg>
       </button>
@@ -509,6 +532,8 @@ function guessDate(mo, d){
   return dt;
 }
 function parseLine(line, base){
+  if (!line.trim()) return null;
+  if (/^\s*(지출|입금|가계부)/.test(line) || state.view === 'money') return parseMoneyLine(line);
   let az = line.match(/^\s*기념일\s*[:：]?\s*([\s\S]+)$/);
   if (!az && !/^\s*(공지|알림)/.test(line)) {
     const kw = /(생일|생신|기일|제사|결혼\s*기념일|주년)(?!\s*(파티|잔치|선물|모임|준비|케이크|케익))/.test(line);
@@ -649,7 +674,7 @@ function parseLine(line, base){
 let db = null, user = null, local = false;
 const LKEY = 'dasom-family-cal-v1';
 function lload(){ try { return JSON.parse(localStorage.getItem(LKEY)) || {}; } catch(e){ return {}; } }
-function lsave(){ try { localStorage.setItem(LKEY, JSON.stringify({ events:state.events, work:state.work, config:state.config, notices:state.notices, annivs:state.annivs })); } catch(e){} }
+function lsave(){ try { localStorage.setItem(LKEY, JSON.stringify({ events:state.events, work:state.work, config:state.config, notices:state.notices, annivs:state.annivs, ledger:state.ledger, budget:state.budget })); } catch(e){} }
 function mergeConfig(c){
   const d = clone(DEFAULT_CONFIG);
   if (!c) return d;
@@ -687,6 +712,11 @@ const api = {
   async addNotice(n){ if (local){ state.notices.push({ id:'n'+Date.now(), ...n, at:Date.now() }); lsave(); render(); return; } const ref = await db.collection('notices').add({ ...n, ...stamp() }); logChange('new','notice',ref.id,n.text.split('\n')[0],''); },
   async setNotice(id,n){ if (local){ const i = state.notices.findIndex(x=>x.id===id); if (i>=0) state.notices[i] = { ...state.notices[i], ...n }; lsave(); render(); return; } const before = state.notices.find(x => x.id === id); await db.doc('notices/'+id).update({ ...n, ...stamp() }); const ch = []; if (before && before.text !== n.text) ch.push(`내용: ${before.text.split('\n')[0]} → ${n.text.split('\n')[0]}`); if (before && (before.until||'') !== (n.until||'')) ch.push(`기한: ${before.until || '없음'} → ${n.until || '없음'}`); logChange('edit','notice',id,n.text.split('\n')[0],'',ch); },
   async delNotice(id){ if (local){ state.notices = state.notices.filter(x=>x.id!==id); lsave(); render(); return; } const before = state.notices.find(x => x.id === id); await db.doc('notices/'+id).delete(); if (before) logChange('del','notice',id,before.text.split('\n')[0],''); },
+  async addMoney(e){ if (local){ state.ledger.push({ id:'m'+Date.now(), ...e }); lsave(); render(); return; } await db.collection('ledger').add({ ...e, ...stamp() }); },
+  async setMoney(id,e){ if (local){ const i = state.ledger.findIndex(x=>x.id===id); if (i>=0) state.ledger[i] = { id, ...e }; lsave(); render(); return; } await db.doc('ledger/'+id).set({ ...e, ...stamp() }); },
+  async delMoney(id){ if (local){ state.ledger = state.ledger.filter(x=>x.id!==id); lsave(); render(); return; } await db.doc('ledger/'+id).delete(); },
+  async setBudget(b){ if (local){ state.budget = b; lsave(); render(); return; } await db.doc('config/budget').set({ cards:b, at:Date.now() }); },
+  async learnCat(m, c){ state.catmap = { ...(state.catmap||{}), [m]:c }; if (local){ lsave(); return; } await db.doc('config/catmap').set({ map:state.catmap }); },
   async setConfig(c){ if (local){ state.config = c; lsave(); render(); return; } await db.doc('config/main').set(c); }
 };
 function fail(e){
@@ -701,7 +731,7 @@ function browserName(){ const u = navigator.userAgent;
   if (/KAKAOTALK/i.test(u)) return '카카오톡 안 브라우저'; if (/NAVER\(inapp/i.test(u)) return '네이버 앱 안 브라우저';
   if (/SamsungBrowser/i.test(u)) return '삼성 인터넷'; if (/CriOS|Chrome/i.test(u)) return '크롬'; if (/Safari/i.test(u)) return '사파리'; return '기타'; }
 state.seenAt = null; let names = {};
-state.myWho = null; state.members = {}; state.log = [];
+state.myWho = null; state.members = {}; state.log = []; state.ledger = []; state.budget = {}; state.catmap = {};
 const WHOKEY = 'dasom-cal-who';
 try { const v = localStorage.getItem(WHOKEY); if (PERSONS.includes(v)) state.myWho = v; } catch(e){}
 function renderWho(){
@@ -748,8 +778,10 @@ async function bellSheet(){
   const items = newItems();
   const ago = t => { const m = Math.round((Date.now() - t) / 60000); return m < 60 ? `${Math.max(1,m)}분 전` : m < 1440 ? `${Math.round(m/60)}시간 전` : `${Math.round(m/1440)}일 전`; };
   const who = id => state.members[id] ? catLabel(state.members[id]) : '가족';
-  const BADGE = { new:['신규','b-new'], edit:['수정','b-edit'], del:['삭제','b-del'] };
+  const BADGE = { new:['신규','b-new'], edit:['수정','b-edit'], del:['삭제','b-del'], alert:['목표','b-warn'] };
+  const bd = x => x.act === 'alert' ? (x.lv >= 100 ? ['초과','b-del'] : ['90%','b-warn']) : (BADGE[x.act] || ['알림','b-edit']);
   const link = x => {
+    if (x.act === 'alert') return 'data-gomoney';
     if (x.act === 'del') return 'disabled';
     if (x.type === 'event' && state.events.some(e => e.id === x.ref)) return `data-ev="${esc(x.ref)}"`;
     if (x.type === 'work' && state.work[x.ref]) return `data-work="${esc(x.ref)}"`;
@@ -757,10 +789,10 @@ async function bellSheet(){
     if (x.type === 'notice' && state.notices.some(n => n.id === x.ref)) return `data-notice="${esc(x.ref)}"`;
     return 'disabled';
   };
-  const counts = { new:0, edit:0, del:0 }; items.forEach(x => counts[x.act] = (counts[x.act]||0) + 1);
+  const counts = { new:0, edit:0, del:0, alert:0 }; items.forEach(x => counts[x.act] = (counts[x.act]||0) + 1);
   openSheet(`<div class="sh"><h3>새 소식</h3><button class="ghost" data-close>닫기</button></div>
-    ${items.length ? `<div class="btns" style="gap:6px">${['new','edit','del'].filter(k => counts[k]).map(k => `<span class="badge ${BADGE[k][1]}">${BADGE[k][0]} ${counts[k]}</span>`).join('')}</div>
-    <div class="notices news" style="margin:0">${items.map(x => `<button class="nitem" ${link(x)}><span class="nt"><span class="badge ${BADGE[x.act][1]}">${BADGE[x.act][0]}</span> <b>${esc(who(x.by))}</b> · ${KIND[x.type]||''}${x.date ? ` · ${dLabel(x.date)}` : ''}<br><span style="${x.act==='del'?'text-decoration:line-through;color:var(--muted)':''}">${esc(x.title)}</span>${(x.changes||[]).length ? `<span class="chg">${x.changes.map(c => esc(c)).join('<br>')}</span>` : ''}</span><span class="nd">${ago(x.at)}</span></button>`).join('')}</div>
+    ${items.length ? `<div class="btns" style="gap:6px">${['new','edit','del','alert'].filter(k => counts[k]).map(k => `<span class="badge ${BADGE[k][1]}">${BADGE[k][0]} ${counts[k]}</span>`).join('')}</div>
+    <div class="notices news" style="margin:0">${items.map(x => `<button class="nitem" ${link(x)}><span class="nt"><span class="badge ${bd(x)[1]}">${bd(x)[0]}</span> <b>${esc(x.by === 'system' ? '가계부' : who(x.by))}</b>${x.type === 'budget' ? '' : ' · ' + (KIND[x.type]||'')}${x.date ? ` · ${dLabel(x.date)}` : ''}<br><span style="${x.act==='del'?'text-decoration:line-through;color:var(--muted)':''}">${esc(x.title)}</span>${(x.changes||[]).length ? `<span class="chg">${x.changes.map(c => esc(c)).join('<br>')}</span>` : ''}</span><span class="nd">${ago(x.at)}</span></button>`).join('')}</div>
     <div class="btns"><button class="primary" data-seenall>모두 확인</button></div>`
     : '<p style="margin:0;color:var(--muted)">새로 바뀐 내용이 없어요.</p>'}`);
 }
@@ -993,7 +1025,7 @@ async function boot(){
   if (!db) {
     local = true;
     const L = lload();
-    state.events = L.events || []; state.work = L.work || {}; state.notices = L.notices || []; state.annivs = L.annivs || []; state.config = mergeConfig(L.config);
+    state.events = L.events || []; state.work = L.work || {}; state.notices = L.notices || []; state.annivs = L.annivs || []; state.ledger = L.ledger || []; state.budget = L.budget || {}; state.config = mergeConfig(L.config);
     state.loaded = true;
     clearTimeout(connTimer); setSync(lastErr ? 'error' : 'local'); setTimeout(maybeAskWho, 300);
     showNote('⚠ 지금은 가족 달력에 연결되지 않아 이 휴대폰에만 저장돼요. 인터넷 연결을 확인하고 다시 열어 주세요.');
@@ -1008,6 +1040,10 @@ async function boot(){
   db.collection('work').onSnapshot(s => { const w = {}; s.docs.forEach(d => { w[d.id] = d.data(); }); state.work = w; render(); }, onErr);
   db.collection('annivs').onSnapshot(s => { state.annivs = s.docs.map(d => ({ id:d.id, ...d.data() })); render(); }, onErr);
   db.collection('members').onSnapshot(s => { const m = {}; s.docs.forEach(d => { if (PERSONS.includes(d.data().who)) m[d.id] = d.data().who; }); state.members = m; if (state.loaded) maybeAskWho(); render(); }, onErr);
+  db.collection('ledger').onSnapshot(s => { state.ledger = s.docs.map(d => ({ id:d.id, ...d.data() })); if (state.view === 'money' || state.view === 'day') renderView(); renderNotices(); if (!s.metadata.fromCache) scheduleBudgetCheck(); }, onErr);
+  db.doc('config/budget').onSnapshot(s => { state.budget = (s.exists && s.data().cards) || {}; if (state.view === 'money') renderView(); renderNotices(); }, onErr);
+  db.doc('config/catmap').onSnapshot(s => { state.catmap = (s.exists && s.data().map) || {}; }, onErr);
+  db.collection('inbox').onSnapshot(s => { if (!s.metadata.fromCache && s.docs.length) processInbox(s.docs); }, onErr);
   db.collection('log').onSnapshot(s => { state.log = s.docs.map(d => ({ id:d.id, ...d.data() })); renderBell(); }, onErr);
   db.collection('notices').onSnapshot(s => { state.notices = s.docs.map(d => ({ id:d.id, ...d.data() })); renderNotices(); }, onErr);
   db.doc('config/main').onSnapshot(s => { state.config = mergeConfig(s.exists ? s.data() : null); render(); renderPreview(); }, onErr);
@@ -1033,14 +1069,17 @@ function renderChips(){
 }
 function render(){
   const c = state.cursor;
-  $('#label').textContent = state.view === 'notice' ? '가족 공지' : state.view === 'month' ? `${c.getFullYear()}년 ${c.getMonth()+1}월`
+  $('#label').textContent = state.view === 'money' ? `${c.getFullYear() === new Date().getFullYear() ? '' : c.getFullYear() + '년 '}${c.getMonth()+1}월 가계부` : state.view === 'notice' ? '가족 공지' : state.view === 'month' ? `${c.getFullYear()}년 ${c.getMonth()+1}월`
     : state.view === 'week' ? (() => { const s = addDays(c, -c.getDay()), e = addDays(s,6); return `${s.getMonth()+1}.${s.getDate()} – ${e.getMonth()+1}.${e.getDate()}`; })()
     : `${c.getMonth()+1}월 ${c.getDate()}일`;
   document.querySelectorAll('.seg button').forEach(b => b.setAttribute('aria-pressed', b.dataset.view === state.view));
   $('#workMode').setAttribute('aria-pressed', state.workMode); $('#workMode').classList.toggle('on', state.workMode);
   if (!document.activeElement || document.activeElement.id !== 'q') renderChips();
   else document.querySelectorAll('.chip[data-f]').forEach(b => b.setAttribute('aria-pressed', b.dataset.f === state.filter));
-  $('#dock').hidden = state.readOnly; renderBell(); renderWho();
+  $('#dock').hidden = state.readOnly; renderBell();
+  $('#quick').placeholder = state.view === 'money' ? '예: 스타벅스 5300 하나카드' : '예: 11월 1일 4시 네일아트';
+  { const hp = $('#help'); if (!hp.dataset.base) hp.dataset.base = hp.textContent; hp.textContent = state.view === 'money' ? '가계부 화면에서는 "사용처 금액 카드"로 적으면 지출로 들어가요. 입금은 "입금 용돈 5만"처럼, 날짜는 "어제"나 "11/2"를 붙이면 돼요.' : hp.dataset.base; }
+  $('#moneyBtn').classList.toggle('on', state.view === 'money'); renderWho();
   $('#hback').hidden = state.view === 'month' && !navStack.length;
   renderView();
 }
@@ -1062,12 +1101,13 @@ function annivRow(x){
 function renderNotices(){
   const el = $('#ntick'); if (!el) return;
   const list = activeNotices(), up = upcomingAnnivs(30);
-  const total = list.length + up.length;
+  const bw = budgetLevels(monthKey(today0())).filter(b => b.lv);
+  const total = list.length + up.length + bw.length;
   if (!total) { el.innerHTML = state.readOnly ? '' : '<span class="lbl">공지</span><span class="txt muted">+ 공지 추가</span>'; return; }
   const dated = list.filter(n => n.until).map(n => ({ k:fromYmd(n.until)-today0(), t:(n.emoji ? n.emoji + ' ' : '') + n.text.split('\n')[0] }))
     .concat(up.map(x => ({ k:x.dd*864e5, t:`${annivIcon(x.a)}${annivTitle(x.a)} ${x.dd===0?'오늘':'D-'+x.dd}` })))
     .sort((a,b) => a.k - b.k);
-  const first = dated[0] ? dated[0].t : list[0].text.split('\n')[0];
+  const first = bw.length ? `${bw[0].lv >= 100 ? '⚠' : '💳'} ${bw[0].card} ${Math.round(bw[0].pct)}% 사용` : dated[0] ? dated[0].t : list[0].text.split('\n')[0];
   el.innerHTML = `<span class="lbl">공지 ${total}</span><span class="txt">${esc(first)}</span>`;
 }
 function noticeView(){
@@ -1163,6 +1203,200 @@ function editNotice(id){
     const dl = root.querySelector('#n_del'); if (dl) armDelete(dl, async () => { try { await api.delNotice(id); closeSheet(); toast('공지를 내렸어요'); } catch(e){ fail(e); } });
   });
 }
+/* ---------- 가계부 ---------- */
+const CARDS = ['삼성카드','하나카드','롯데카드','하나은행','현금','기타'];
+const MCATS = ['식비','카페·간식','마트·생활','교통·차량','병원·약국','교육','쇼핑','통신·공과금','경조사·선물','여가','이체','입금','기타'];
+const MCAT_KW = [
+  ['카페·간식', /(커피|카페|스타벅스|투썸|이디야|메가엠지씨|메가커피|컴포즈|빽다방|폴바셋|할리스|베이커리|파리바게|뚜레쥬르|던킨|배스킨|설빙|공차)/i],
+  ['식비', /(식당|김밥|치킨|피자|버거|맥도날드|롯데리아|KFC|맘스터치|배달의민족|우아한형제|배민|요기요|쿠팡이츠|국밥|분식|족발|보쌈|고기|갈비|횟집|초밥|스시|반점|짬뽕|냉면|칼국수|도시락|한솥|본죽|푸드|음식)/i],
+  ['마트·생활', /(이마트|홈플러스|롯데마트|코스트코|트레이더스|마트|다이소|GS25|지에스25|CU|씨유|세븐일레븐|편의점|노브랜드|하나로|쿠팡|컬리|생활)/i],
+  ['교통·차량', /(주유|오일|칼텍스|에너지|S-?OIL|충전소|택시|카카오T|카카오모빌|티머니|코레일|SRT|톨게이트|하이패스|주차|도로공사|정비|세차|타이어)/i],
+  ['병원·약국', /(병원|의원|약국|치과|한의원|안과|소아|피부과|정형외과|내과|이비인후과|산부인과|메디|클리닉)/i],
+  ['교육', /(학원|교습|교육|서점|교보|영풍|yes24|예스24|알라딘|스쿨|태권도|피아노|미술|수학|영어)/i],
+  ['쇼핑', /(올리브영|무신사|11번가|G마켓|지마켓|옥션|네이버페이|백화점|아울렛|ABC마트|유니클로|자라|탑텐|스파오|에이블리|지그재그)/i],
+  ['통신·공과금', /(SKT|SK텔레콤|KT|LG유플러스|유플러스|통신|한전|한국전력|가스|수도|관리비|보험)/i],
+  ['여가', /(CGV|메가박스|롯데시네마|영화|노래|PC방|볼링|키즈카페|놀이|여행|호텔|펜션|숙박|야놀자|여기어때|에버랜드|롯데월드)/i]
+];
+function guessCat(m, type){ if (type === 'in') return '입금'; const map = state.catmap || {}; if (m && map[m]) return map[m]; for (const [c, re] of MCAT_KW) if (re.test(m || '')) return c; return '기타'; }
+const won = n => (n < 0 ? '-' : '') + Math.abs(Math.round(+n || 0)).toLocaleString('ko-KR') + '원';
+function monthKey(d){ return `${d.getFullYear()}-${pad(d.getMonth()+1)}`; }
+function monthEntries(mk){ return state.ledger.filter(x => (x.date || '').startsWith(mk)); }
+function spendOf(x){ return x.type === 'out' && !x.cancelled ? (+x.amount || 0) : 0; }
+function cardSpend(mk){ const o = {}; monthEntries(mk).forEach(x => { const v = spendOf(x); if (v) o[x.card || '기타'] = (o[x.card || '기타'] || 0) + v; }); return o; }
+function budgetLevels(mk){
+  const b = state.budget || {}, sp = cardSpend(mk), out = [];
+  Object.keys(b).forEach(card => { const goal = +b[card] || 0; if (!goal) return; const pct = (sp[card] || 0) / goal * 100; out.push({ card, goal, spent:sp[card] || 0, pct, lv: pct >= 100 ? 100 : pct >= 90 ? 90 : 0 }); });
+  return out;
+}
+/* 카드사·은행 앱 알림 문장 읽기 */
+function detectCard(app, s){
+  const t = `${app || ''} ${s || ''}`;
+  if (/삼성/.test(t)) return '삼성카드';
+  if (/롯데|LOCA/i.test(t)) return '롯데카드';
+  if (/하나/.test(t)) {
+    if (/하나은행|원큐|1Q|하나\s*뱅크/i.test(t)) return '하나은행';
+    if (/하나카드|하나\s*Pay|하나페이|하나머니/i.test(t)) return '하나카드';
+    return /(입금|출금|이체|잔액)/.test(t) ? '하나은행' : '하나카드';
+  }
+  return '';
+}
+function parseNotice(app, title, text, at){
+  const raw = [title, text].filter(Boolean).join('\n').replace(/\r/g, '');
+  const card = detectCard(app, raw);
+  let amount = 0;
+  for (const m of raw.matchAll(/([0-9][0-9,]{0,13})\s*원/g)) {
+    const ctx = raw.slice(Math.max(0, m.index - 8), m.index);
+    if (/(누적|잔액|한도|포인트|가용|이용가능|청구)\s*[:：]?\s*$/.test(ctx)) continue;
+    amount = +m[1].replace(/,/g, ''); if (amount) break;
+  }
+  let type = 'out';
+  if (/취소/.test(raw)) type = 'cancel';
+  else if (/(입금|급여|환급|받으신|받은)/.test(raw) && !/출금/.test(raw)) type = 'in';
+  const d0 = new Date(at || Date.now());
+  let date = ymd(d0), time = `${pad(d0.getHours())}:${pad(d0.getMinutes())}`, m;
+  if ((m = raw.match(/(\d{1,2})[\/.\-월]\s*(\d{1,2})일?\s+(\d{1,2}):(\d{2})/))) { const dt = new Date(d0.getFullYear(), +m[1]-1, +m[2]); if (dt - d0 > 40 * 864e5) dt.setFullYear(dt.getFullYear() - 1); date = ymd(dt); time = `${pad(+m[3])}:${m[4]}`; }
+  else if ((m = raw.match(/(?:^|\s)(\d{1,2}):(\d{2})(?!\d)/))) time = `${pad(+m[1])}:${m[2]}`;
+  const inst = (raw.match(/(\d{1,2})\s*개월/) || [])[1];
+  const installment = inst ? `${inst}개월 할부` : /일시불/.test(raw) ? '일시불' : '';
+  // 가맹점: 알려진 말을 지우고 남는 것 중 가장 그럴듯한 줄
+  const STRIP = [/\[[^\]]*\]/g, /\([^)]*\)/g, /Web발신/gi, /(삼성|하나|롯데)\s*(카드|은행|Pay|페이)?/g, /LOCA/gi, /원큐|1Q/gi,
+    /[0-9][0-9,]*\s*원/g, /\d{1,2}[\/.\-]\d{1,2}\s*\d{1,2}:\d{2}/g, /\d{1,2}:\d{2}/g, /\d{1,2}\s*개월/g,
+    /(승인|결제|일시불|할부|체크|신용|해외|국내|누적|잔액|한도|사용|이용|금액|가맹점|고객님|회원님|님|취소|정상|완료|출금|입금|이체|알림|카드)/g,
+    /\S\*+\S?/g, /\*{2,}\d*/g, /\d{3,}/g, /[:：|·•,]/g];
+  const cand = raw.split('\n').map(l => { let x = l; STRIP.forEach(re => { x = x.replace(re, ' '); }); return x.replace(/\s+/g, ' ').trim(); }).filter(x => x.length >= 2);
+  let merchant = cand.length ? cand.sort((a, b) => b.length - a.length)[0] : '';
+  if (merchant.length > 30) merchant = merchant.slice(0, 30);
+  return { card, type, amount, date, time, merchant, installment, raw };
+}
+let inboxBusy = false, budgetTimer = null;
+async function processInbox(docs){
+  if (inboxBusy || !db || local) return; inboxBusy = true;
+  try {
+    for (const d of docs) {
+      const x = d.data(), id = d.id;
+      const p = parseNotice(x.app, x.title, x.text, x.at);
+      if (p.type === 'cancel' && p.amount) {
+        const hit = state.ledger.filter(e => !e.cancelled && e.type === 'out' && (!p.card || e.card === p.card) && +e.amount === p.amount)
+          .sort((a, b) => ((b.date || '') + (b.time || '')).localeCompare((a.date || '') + (a.time || '')))[0];
+        if (hit) { await db.doc('ledger/' + hit.id).update({ cancelled:true, cancelRaw:p.raw }); await db.doc('inbox/' + id).delete(); continue; }
+      }
+      const type = p.type === 'cancel' ? 'in' : p.type;
+      const merchant = (p.type === 'cancel' ? '취소 ' : '') + (p.merchant || (type === 'in' ? '입금' : '가맹점 확인 필요'));
+      await db.doc('ledger/' + id).set({ date:p.date, time:p.time, amount:p.amount || 0, type, merchant, card:p.card || '기타', who:'hus',
+        cat: p.type === 'cancel' ? '기타' : guessCat(p.merchant, type), memo:p.installment, src:'auto', raw:p.raw, review:!p.amount, cancelled:false, at:Date.now(), by:'system' });
+      await db.doc('inbox/' + id).delete();
+    }
+  } catch(e){}
+  inboxBusy = false;
+}
+function scheduleBudgetCheck(){ clearTimeout(budgetTimer); budgetTimer = setTimeout(checkBudgets, 1500); }
+async function checkBudgets(){
+  if (!db || local || !FB) return;
+  const mk = monthKey(today0());
+  for (const b of budgetLevels(mk)) {
+    if (!b.lv) continue;
+    try {
+      const ref = FB.F.doc(FB.fs, 'budgetAlerts/' + mk + '_' + b.card);
+      const fire = await FB.F.runTransaction(FB.fs, async tx => { const s = await tx.get(ref); const cur = s.exists() ? (s.data().lv || 0) : 0; if (cur >= b.lv) return false; tx.set(ref, { lv:b.lv, at:Date.now() }); return true; });
+      if (fire) await db.collection('log').add({ act:'alert', type:'budget', lv:b.lv, ref:b.card, date:'', changes:[`${won(b.spent)} / 목표 ${won(b.goal)} (${Math.round(b.pct)}%)`],
+        title: b.lv >= 100 ? `⚠ ${b.card} 이번 달 사용 목표를 넘었어요` : `${b.card} 이번 달 사용 목표의 90%에 도달했어요`, at:Date.now(), by:'system' });
+    } catch(e){}
+  }
+}
+function parseMoneyLine(line){
+  let s = ' ' + line.trim() + ' ';
+  const type = /^\s*입금/.test(line) ? 'in' : 'out';
+  s = s.replace(/^\s*(지출|입금|가계부)\s*[:：]?/, ' ');
+  let amount = 0, m;
+  if ((m = s.match(/(\d+(?:\.\d+)?)\s*만\s*(\d{1,4})?\s*원?/))) { amount = Math.round(+m[1] * 10000) + (m[2] ? +m[2] : 0); s = s.replace(m[0], ' '); }
+  else if ((m = s.match(/(\d+(?:\.\d+)?)\s*천\s*원?/))) { amount = Math.round(+m[1] * 1000); s = s.replace(m[0], ' '); }
+  else if ((m = s.match(/(\d[\d,]*)\s*원?(?![\d\/:.])/))) { amount = +m[1].replace(/,/g, ''); s = s.replace(m[0], ' '); }
+  let card = '';
+  if (/삼성/.test(s)) card = '삼성카드'; else if (/롯데/.test(s)) card = '롯데카드'; else if (/하나\s*은행/.test(s)) card = '하나은행'; else if (/하나/.test(s)) card = '하나카드'; else if (/현금/.test(s)) card = '현금';
+  s = s.replace(/(삼성|롯데|하나)\s*(카드|은행)?|현금/g, ' ');
+  let date = state.view === 'money' && monthKey(state.cursor) !== monthKey(today0()) ? ymd(state.cursor) : ymd(today0());
+  if ((m = s.match(/(\d{1,2})\s*[\/.]\s*(\d{1,2})/))) { date = ymd(guessDate(+m[1], +m[2])); s = s.replace(m[0], ' '); }
+  else if ((m = s.match(/(어제|오늘|그제)/))) { date = ymd(addDays(today0(), { 오늘:0, 어제:-1, 그제:-2 }[m[1]])); s = s.replace(m[0], ' '); }
+  const merchant = s.replace(/\s+/g, ' ').trim() || (type === 'in' ? '입금' : '지출');
+  return { kind:'money', type, amount, card: card || (type === 'in' ? '하나은행' : '현금'), date, merchant, cat: guessCat(merchant, type), notes: amount ? [] : ['금액을 적어 주세요'] };
+}
+function moneyView(){
+  const mk = monthKey(state.cursor);
+  const list = monthEntries(mk).slice().sort((a, b) => ((b.date || '') + (b.time || '')).localeCompare((a.date || '') + (a.time || '')));
+  const out = list.reduce((s, x) => s + spendOf(x), 0);
+  const inn = list.filter(x => x.type === 'in' && !x.cancelled).reduce((s, x) => s + (+x.amount || 0), 0);
+  const sp = cardSpend(mk), b = state.budget || {};
+  const cards = [...new Set([...CARDS.filter(c => +b[c]), ...Object.keys(sp)])];
+  const bars = cards.map(c => {
+    const goal = +b[c] || 0, spent = sp[c] || 0, pct = goal ? spent / goal * 100 : 0;
+    const cls = goal ? (pct >= 100 ? 'over' : pct >= 90 ? 'warn' : '') : 'nogoal';
+    return `<div class="bar ${cls}"><div class="top"><span>${esc(c)}</span><span>${won(spent)}${goal ? ` / ${won(goal)} <span class="pct">${Math.round(pct)}%</span>` : ' <span class="help">목표 없음</span>'}</span></div>${goal ? `<div class="trk"><div class="fill" style="width:${Math.min(100, pct).toFixed(1)}%"></div></div>` : ''}${pct >= 100 ? `<div class="warnline">⚠ 목표보다 ${won(spent - goal)} 더 썼어요</div>` : pct >= 90 ? `<div class="warnline">목표까지 ${won(goal - spent)} 남았어요</div>` : ''}</div>`;
+  }).join('');
+  const byCat = {}; list.forEach(x => { const v = spendOf(x); if (v) byCat[x.cat || '기타'] = (byCat[x.cat || '기타'] || 0) + v; });
+  const cats = Object.entries(byCat).sort((a, b) => b[1] - a[1]); const maxc = cats.length ? cats[0][1] : 1;
+  const review = list.filter(x => x.review && !x.cancelled);
+  const groups = {}; list.forEach(x => { (groups[x.date] = groups[x.date] || []).push(x); });
+  const row = x => `<button class="mrow ${x.cancelled ? 'cx' : ''}" data-money="${esc(x.id)}"><span class="tm">${esc(x.time || '')}</span><span class="mm"><b>${esc(x.merchant || '')}</b><span class="tags"><span class="chipx">${esc(x.card || '')}</span><span class="chipx">${esc(x.cat || '')}</span>${x.memo ? `<span>${esc(x.memo)}</span>` : ''}${x.cancelled ? '<span>승인 취소</span>' : ''}${x.review ? '<span style="color:var(--sun)">확인 필요</span>' : ''}</span></span><span class="amt ${x.type === 'in' ? 'in' : 'out'}">${x.type === 'in' ? '+' : '-'}${won(x.amount)}</span></button>`;
+  return `<div class="mstats"><div><span>지출</span><b class="out">${won(out)}</b></div><div><span>입금</span><b class="in">${won(inn)}</b></div><div><span>차액</span><b>${won(inn - out)}</b></div></div>
+    <div class="btns" style="margin-bottom:12px">${state.readOnly ? '' : '<button class="primary" data-addmoney style="height:38px">+ 내역 추가</button>'}<button class="ghost" data-budget>카드별 목표 설정</button></div>
+    ${review.length ? `<div class="sec" style="margin-top:0;color:var(--sun)">확인이 필요한 내역 ${review.length}건</div><div class="dcard" style="margin-bottom:12px"><div class="items">${review.map(row).join('')}</div></div>` : ''}
+    <div class="sec" style="margin-top:0">카드별 사용</div>
+    ${bars ? `<div class="bars">${bars}</div>` : '<div class="empty" style="padding:0 0 4px">이번 달 카드 사용 내역이 없어요. "카드별 목표 설정"에서 한 달 목표를 정해 두면 90%와 초과 때 가족 모두에게 알려 드려요.</div>'}
+    ${cats.length ? `<div class="sec">카테고리별 지출</div><div class="bars">${cats.map(([c, v]) => `<div class="bar nogoal"><div class="top"><span>${esc(c)}</span><span>${won(v)} <span class="help">${Math.round(v / out * 100)}%</span></span></div><div class="trk"><div class="fill" style="width:${(v / maxc * 100).toFixed(1)}%;background:var(--c-elder)"></div></div></div>`).join('')}</div>` : ''}
+    <div class="sec">내역 ${list.length}건</div>
+    ${list.length ? `<div class="days">${Object.keys(groups).sort().reverse().map(ds => { const day = groups[ds]; const dsum = day.reduce((s, x) => s + spendOf(x), 0); return `<section class="dcard"><div class="dhead"><span class="d">${dLabel(ds)}</span><span class="t">${dsum ? '지출 ' + won(dsum) : ''}</span></div><div class="items">${day.map(row).join('')}</div></section>`; }).join('')}</div>`
+      : '<div class="empty" style="padding:0">아직 내역이 없어요. 아래 입력칸에 "스타벅스 5300 하나카드"처럼 적거나, 진우 님 휴대폰 알림 연결이 끝나면 자동으로 들어와요.</div>'}`;
+}
+function editMoney(id){
+  const isNew = !id;
+  const x = isNew ? { type:'out', amount:'', merchant:'', date: monthKey(state.cursor) === monthKey(today0()) ? ymd(today0()) : ymd(state.cursor), time:'', card:'현금', cat:'기타', who: state.myWho || 'me', memo:'', cancelled:false } : state.ledger.find(e => e.id === id);
+  if (!x) return; const dis = state.readOnly ? 'disabled' : '';
+  openSheet(`<div class="sh"><h3>${isNew ? '가계부 내역 추가' : '가계부 내역'}</h3><button class="ghost" data-close>닫기</button></div>
+    <div class="seg2"><button data-mt="out" aria-pressed="${x.type !== 'in'}" ${dis}>지출</button><button data-mt="in" aria-pressed="${x.type === 'in'}" ${dis}>입금</button></div>
+    <div class="row2"><div class="fld"><label for="m_amt">금액 (원)</label><input id="m_amt" inputmode="numeric" value="${x.amount || ''}" ${dis}></div><div class="fld"><label for="m_card">카드·계좌</label><select id="m_card" ${dis}>${CARDS.map(c => `<option ${x.card === c ? 'selected' : ''}>${c}</option>`).join('')}</select></div></div>
+    <div class="fld"><label for="m_mer">사용처</label><input id="m_mer" value="${esc(x.merchant || '')}" ${dis}></div>
+    <div class="row2"><div class="fld"><label for="m_date">날짜</label><input id="m_date" type="date" value="${x.date || ''}" ${dis}></div><div class="fld"><label for="m_time">시간</label><input id="m_time" type="time" value="${x.time || ''}" ${dis}></div></div>
+    <div class="row2"><div class="fld"><label for="m_cat">카테고리</label><select id="m_cat" ${dis}>${MCATS.map(c => `<option ${x.cat === c ? 'selected' : ''}>${c}</option>`).join('')}</select></div><div class="fld"><label for="m_who">누가</label><select id="m_who" ${dis}>${PERSONS.map(k => `<option value="${k}" ${x.who === k ? 'selected' : ''}>${esc(catLabel(k))}</option>`).join('')}</select></div></div>
+    <div class="fld"><label for="m_memo">메모</label><input id="m_memo" value="${esc(x.memo || '')}" ${dis}></div>
+    ${!isNew ? `<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="m_cx" ${x.cancelled ? 'checked' : ''} ${dis}> 승인 취소된 내역 (합계에서 빼기)</label>` : ''}
+    ${x.raw ? `<div class="fld"><label>받은 알림 원문</label><div class="note" style="margin:0;white-space:pre-wrap;font-size:12px">${esc(x.raw)}</div></div>` : ''}
+    ${state.readOnly ? '' : `<div class="btns"><button class="primary" id="m_save">${isNew ? '추가' : '저장'}</button>${isNew ? '' : '<button class="danger" id="m_del">삭제</button>'}</div>`}`,
+  root => {
+    let type = x.type === 'in' ? 'in' : 'out';
+    root.querySelectorAll('[data-mt]').forEach(b => b.addEventListener('click', () => { type = b.dataset.mt; root.querySelectorAll('[data-mt]').forEach(y => y.setAttribute('aria-pressed', y === b)); }));
+    if (state.readOnly) return;
+    root.querySelector('#m_save').addEventListener('click', async () => {
+      const amount = +String(root.querySelector('#m_amt').value).replace(/[^\d]/g, '');
+      if (!amount) { root.querySelector('#m_amt').focus(); return; }
+      const merchant = root.querySelector('#m_mer').value.trim() || (type === 'in' ? '입금' : '지출');
+      const cat = root.querySelector('#m_cat').value;
+      const ne = { ...(isNew ? {} : x), type, amount, merchant, card:root.querySelector('#m_card').value, date:root.querySelector('#m_date').value || x.date, time:root.querySelector('#m_time').value, cat, who:root.querySelector('#m_who').value, memo:root.querySelector('#m_memo').value.trim(), cancelled: !!(root.querySelector('#m_cx') && root.querySelector('#m_cx').checked), review:false, src: isNew ? 'manual' : (x.src || 'manual') };
+      delete ne.id;
+      try {
+        isNew ? await api.addMoney(ne) : await api.setMoney(id, ne);
+        if (merchant && cat !== guessCat(merchant, type) && type === 'out') await api.learnCat(merchant, cat);
+        closeSheet(); toast(isNew ? '가계부에 추가했어요' : '저장했어요');
+      } catch(e){ fail(e); }
+    });
+    const dl = root.querySelector('#m_del'); if (dl) armDelete(dl, async () => { try { await api.delMoney(id); closeSheet(); toast('삭제했어요'); } catch(e){ fail(e); } });
+  });
+}
+function budgetSheet(){
+  const b = state.budget || {}, mk = monthKey(today0()), sp = cardSpend(mk);
+  const editable = ['삼성카드','하나카드','롯데카드','하나은행','현금'];
+  openSheet(`<div class="sh"><h3>카드별 한 달 목표</h3><button class="ghost" data-close>닫기</button></div>
+    <p class="help" style="margin:0">매달 1일부터 다시 계산해요. 목표의 90%에 닿을 때와 넘었을 때 가족 모두의 🔔 새 소식에 알림이 떠요. 비워 두면 목표 없음이에요.</p>
+    ${editable.map(c => `<div class="row2" style="align-items:end"><div class="fld"><label for="bg_${c}">${c} <span class="help">이번 달 ${won(sp[c] || 0)}</span></label><input id="bg_${c}" inputmode="numeric" placeholder="예: 500000" value="${+b[c] || ''}" ${state.readOnly ? 'disabled' : ''}></div><div class="help" id="bgv_${c}" style="padding-bottom:10px">${+b[c] ? won(+b[c]) : ''}</div></div>`).join('')}
+    ${state.readOnly ? '' : '<div class="btns"><button class="primary" id="bg_save">저장</button></div>'}`,
+  root => {
+    editable.forEach(c => { const i = root.querySelector('#bg_' + CSS.escape(c)); if (i) i.addEventListener('input', () => { const v = +i.value.replace(/[^\d]/g, ''); root.querySelector('#bgv_' + CSS.escape(c)).textContent = v ? won(v) : ''; }); });
+    const sv = root.querySelector('#bg_save'); if (!sv) return;
+    sv.addEventListener('click', async () => {
+      const nb = {}; editable.forEach(c => { const v = +root.querySelector('#bg_' + CSS.escape(c)).value.replace(/[^\d]/g, ''); if (v) nb[c] = v; });
+      try { await api.setBudget(nb); closeSheet(); toast('목표를 저장했어요'); scheduleBudgetCheck(); } catch(e){ fail(e); }
+    });
+  });
+}
 function renderView(){
   renderNotices();
   const ab = $('#abar');
@@ -1172,6 +1406,7 @@ function renderView(){
   if (state.view === 'month') v.innerHTML = monthView();
   else if (state.view === 'week') v.innerHTML = weekView();
   else if (state.view === 'notice') v.innerHTML = noticeView();
+  else if (state.view === 'money') v.innerHTML = moneyView();
   else v.innerHTML = dayView();
   if (state.workMode && state.view === 'month') { const h = document.createElement('div'); h.className = 'note'; h.style.marginTop = '0'; h.style.marginBottom = '10px'; h.textContent = '근무 입력 모드: 날짜를 누르면 그날 코스를 고를 수 있어요.'; v.prepend(h); }
 }
@@ -1237,6 +1472,7 @@ function dayView(){
       h += `<button class="workcard none" data-work="${ds}"><div class="grow">${esc(catLabel('hus'))} 근무 코스 지정</div><span>+</span></button>`;
     }
   }
+  { const dl = state.ledger.filter(x => x.date === ds); const dsum = dl.reduce((s2, x) => s2 + spendOf(x), 0); if (dl.length) h += `<button class="workcard none" data-gomoney style="margin-top:0"><div class="grow">💳 이날 지출 <b>${won(dsum)}</b> · ${dl.length}건</div><span>가계부 ›</span></button>`; }
   if (!state.readOnly) h += `<button class="addday" data-addev="${ds}">+ 이 날에 일정 추가</button><div style="height:10px"></div>`;
   const ai = annivItems(ds);
   if (ai) h += `<div class="dcard" style="margin-bottom:10px"><div class="items">${ai}</div></div>`;
@@ -1278,6 +1514,7 @@ function renderPreview(){
   $('#preview').innerHTML = state.drafts.map((d,i) => {
     if (d.kind === 'anniv') { const a = d.a, o = a.month && a.day ? nextOcc(a) : null;
       return `<div class="pv"><span class="cbtn" style="--c:${annivColor(a)}">기념일</span><span class="pt">${annivIcon(a)}${esc(annivTitle(a))} · ${a.month&&a.day?esc(annivDateLabel(a)):'날짜 없음'}</span><span class="hint">${o ? `다음: ${fromYmd(o.date).getMonth()+1}/${fromYmd(o.date).getDate()}${annivCount(a,o.n)?' · '+annivCount(a,o.n):''}` : d.notes.join(' · ')}</span></div>`; }
+    if (d.kind === 'money') return `<div class="pv"><span class="cbtn" style="--c:${d.type === 'in' ? 'var(--accent)' : 'var(--sun)'}">${d.type === 'in' ? '입금' : '지출'}</span><span class="pt">${esc(d.merchant)} · ${d.amount ? won(d.amount) : '금액?'} · ${esc(d.card)} · ${esc(d.cat)}</span><span class="hint">${dLabel(d.date).replace(/^\d+월 /,'')}${d.notes.length ? ' · ' + esc(d.notes.join(' · ')) : ''}</span></div>`;
     if (d.kind === 'notice') return `<div class="pv"><span class="cbtn" style="--c:var(--accent)">공지</span><span class="pt">${esc(d.text)}</span><span class="hint">${d.until ? dLabel(d.until)+'까지' : '기한 없음'}</span></div>`;
     if (d.kind === 'work') {
       const {row} = courseInfo(d.date, d.course);
@@ -1293,12 +1530,13 @@ async function addDrafts(){
   try {
     for (const d of ds) {
       if (d.kind === 'anniv') { if (d.a.month && d.a.day) await api.addAnniv(d.a); continue; }
+      if (d.kind === 'money') { if (d.amount) await api.addMoney({ type:d.type, amount:d.amount, merchant:d.merchant, card:d.card, cat:d.cat, date:d.date, time:'', who:state.myWho || 'me', memo:'', cancelled:false, review:false, src:'manual' }); continue; }
       if (d.kind === 'notice') { await api.addNotice({ text:d.text, until:d.until }); continue; }
       if (d.kind === 'work') await api.setWork(d.date, { course:d.course });
       else await api.addEvent({ date:d.date, start:d.start||'', end:d.end||'', title:d.title, cat:catFromPeople(d.people), people:d.people, memo:'' });
     }
     $('#quick').value = ''; state.drafts = []; renderPreview(); autosize();
-    toast(ds.length > 1 ? `${ds.length}건 추가했어요` : ds[0].kind === 'notice' ? '공지를 올렸어요' : ds[0].kind === 'anniv' ? '기념일을 등록했어요' : `${dLabel(ds[0].date)}에 추가했어요`);
+    toast(ds.length > 1 ? `${ds.length}건 추가했어요` : ds[0].kind === 'notice' ? '공지를 올렸어요' : ds[0].kind === 'anniv' ? '기념일을 등록했어요' : ds[0].kind === 'money' ? '가계부에 추가했어요' : `${dLabel(ds[0].date)}에 추가했어요`);
     if (ds.length === 1 && ds[0].date) { state.cursor = fromYmd(ds[0].date); render(); }
   } catch(e){ fail(e); $('#addBtn').disabled = false; }
 }
@@ -1320,7 +1558,7 @@ function viewHash(){
   return state.view === 'month' ? `month-${c.getFullYear()}-${pad(c.getMonth()+1)}` : `${state.view}-${ymd(c)}`;
 }
 function applyHash(h){
-  const m = (h||'').match(/^(month|week|day|notice)-(\d{4})-(\d{2})(?:-(\d{2}))?$/);
+  const m = (h||'').match(/^(month|week|day|notice|money)-(\d{4})-(\d{2})(?:-(\d{2}))?$/);
   if (!m) return false;
   state.view = m[1]; state.cursor = new Date(+m[2], +m[3]-1, m[4] ? +m[4] : 1); return true;
 }
@@ -1505,6 +1743,10 @@ document.addEventListener('click', ev => {
   if (t.dataset.notice) { editNotice(t.dataset.notice); return; }
   if (t.hasAttribute('data-whoami')) { if (FB) accountSheet(); else whoPicker(false); return; }
   if (t.dataset.setwho) { setWho(t.dataset.setwho); return; }
+  if (t.hasAttribute('data-gomoney')) { closeSheet(); navTo('money'); return; }
+  if (t.dataset.money) { editMoney(t.dataset.money); return; }
+  if (t.hasAttribute('data-addmoney')) { editMoney(null); return; }
+  if (t.hasAttribute('data-budget')) { budgetSheet(); return; }
   if (t.hasAttribute('data-bell')) { bellSheet(); return; }
   if (t.hasAttribute('data-seenall')) { markSeen(); return; }
   if (t.hasAttribute('data-reconnect')) { try { localStorage.setItem('fc-longpoll', '1'); } catch(e){} location.reload(); return; }
@@ -1529,12 +1771,12 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#sheet
 const step = dir => {
   if (state.view === 'notice') return;
   const c = state.cursor;
-  state.cursor = state.view === 'month' ? new Date(c.getFullYear(), c.getMonth()+dir, 1) : addDays(c, state.view==='week' ? 7*dir : dir);
+  state.cursor = state.view === 'month' || state.view === 'money' ? new Date(c.getFullYear(), c.getMonth()+dir, 1) : addDays(c, state.view==='week' ? 7*dir : dir);
   render(); renderPreview();
 };
 $('#prev').addEventListener('click', () => step(-1));
 /* 스와이프: 좌우 = 이전·다음 기간, 위아래 = 월·주·일·공지 */
-const VIEWS = ['month','week','day','notice'];
+const VIEWS = ['month','week','day','notice','money'];
 const reduceMotion = (() => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch(e){ return false; } })();
 function slide(cls){ if (reduceMotion) return; const v = $('#view'); v.classList.remove('swl','swr','swu','swd'); void v.offsetWidth; v.classList.add(cls); }
 let tStart = null;
