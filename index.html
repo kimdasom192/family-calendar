@@ -1231,7 +1231,7 @@ function budgetLevels(mk){
 /* 카드사·은행 앱 알림 문장 읽기 */
 function detectCard(app, s){
   const t = `${app || ''} ${s || ''}`;
-  if (/삼성/.test(t)) return '삼성카드';
+  if (/삼성|monimo|모니모/i.test(t)) return '삼성카드';
   if (/롯데|LOCA/i.test(t)) return '롯데카드';
   if (/하나/.test(t)) {
     if (/하나은행|원큐|1Q|하나\s*뱅크/i.test(t)) return '하나은행';
@@ -1261,7 +1261,7 @@ function parseNotice(app, title, text, at){
   const inst = (raw.match(/(\d{1,2})\s*개월/) || [])[1];
   const installment = inst ? `${inst}개월 할부` : /일시불/.test(raw) ? '일시불' : '';
   // 가맹점: 알려진 말을 지우고 남는 것 중 가장 그럴듯한 줄
-  const STRIP = [/\[[^\]]*\]/g, /\([^)]*\)/g, /Web발신/gi, /(삼성|하나|롯데)\s*(카드|은행|Pay|페이)?/g, /LOCA/gi, /원큐|1Q/gi,
+  const STRIP = [/\[[^\]]*\]/g, /\([^)]*\)/g, /Web발신/gi, /monimo|모니모|디지로카|하나Pay|하나페이|하나원큐/gi, /(삼성|하나|롯데)\s*(카드|은행|Pay|페이)?/g, /LOCA/gi, /원큐|1Q/gi,
     /[0-9][0-9,]*\s*원/g, /\d{1,2}[\/.\-]\d{1,2}\s*\d{1,2}:\d{2}/g, /\d{1,2}:\d{2}/g, /\d{1,2}\s*개월/g,
     /(승인|결제|일시불|할부|체크|신용|해외|국내|누적|잔액|한도|사용|이용|금액|가맹점|고객님|회원님|님|취소|정상|완료|출금|입금|이체|알림|카드)/g,
     /\S\*+\S?/g, /\*{2,}\d*/g, /\d{3,}/g, /[:：|·•,]/g];
