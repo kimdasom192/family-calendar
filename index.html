@@ -791,7 +791,7 @@ async function bellSheet(){
   const ago = t => { const m = Math.round((Date.now() - t) / 60000); return m < 60 ? `${Math.max(1,m)}분 전` : m < 1440 ? `${Math.round(m/60)}시간 전` : `${Math.round(m/1440)}일 전`; };
   const who = id => state.members[id] ? catLabel(state.members[id]) : '가족';
   const BADGE = { new:['신규','b-new'], edit:['수정','b-edit'], del:['삭제','b-del'], alert:['목표','b-warn'] };
-  const bd = x => x.act === 'alert' ? (x.lv >= 100 ? ['초과','b-del'] : ['90%','b-warn']) : (BADGE[x.act] || ['알림','b-edit']);
+  const bd = x => x.act === 'alert' ? (x.lv >= 100 ? ['초과','b-del'] : x.lv >= 90 ? ['90%','b-warn'] : ['연결','b-new']) : (BADGE[x.act] || ['알림','b-edit']);
   const link = x => {
     if (x.act === 'alert') return 'data-gomoney';
     if (x.act === 'del') return 'disabled';
@@ -1238,7 +1238,7 @@ function monthKey(d){ return `${d.getFullYear()}-${pad(d.getMonth()+1)}`; }
 function monthEntries(mk){ return state.ledger.filter(x => (x.date || '').startsWith(mk)); }
 /* 카드사·은행 앱 알림 문장 읽기 */
 function detectCard(app, s){
-  const t = `${app || ''} ${s || ''}`;
+  const t = `${app || ''} ${s || ''}`.replace(/삼성\s*(월렛|페이|pay)|samsung\s*(wallet|pay)/gi, ' ');
   if (/삼성|monimo|모니모/i.test(t)) return '삼성카드';
   if (/롯데|LOCA/i.test(t)) return '롯데카드';
   if (/하나/.test(t)) {
@@ -1374,6 +1374,17 @@ async function processInbox(docs){
     for (const d of docs) {
       const x = d.data(), id = d.id;
       const p = parseNotice(x.app, x.title, x.text, x.at);
+      // 광고·안내처럼 금액도 결제 말도 없는 알림은 버리기
+      if (!p.amount && !/[가-힣A-Za-z0-9]/.test((p.raw || '').replace(/lv=t|not_\w+|notification|[{}|\/]/g, ''))) { await db.doc('inbox/' + id).delete(); await db.collection('log').add({ act:'alert', type:'budget', lv:0, ref:'', date:'', changes:['진우 님 휴대폰에서 보낸 시험 알림이 잘 도착했어요.'], title:'📱 카드 알림 연결 확인', at:Date.now(), by:'system' }); continue; }
+      if (!p.amount && !/(승인|결제|입금|출금|취소|이체|사용)/.test(p.raw)) { await db.doc('inbox/' + id).delete(); continue; }
+      // 같은 결제가 카드사 앱과 삼성월렛에서 두 번 오면 하나만 남기기
+      const tm = s2 => { const [h, mi] = (s2 || '00:00').split(':').map(Number); return h * 60 + mi; };
+      const dup = p.amount && state.ledger.find(e => !e.cancelled && e.src === 'auto' && e.type === (p.type === 'cancel' ? 'in' : p.type) && +e.amount === p.amount && e.date === p.date && Math.abs(tm(e.time) - tm(p.time)) <= 5);
+      if (dup && p.type !== 'cancel') {
+        if ((!dup.card || dup.card === '기타') && p.card) await db.doc('ledger/' + dup.id).update({ card:p.card });
+        if (/확인 필요/.test(dup.merchant || '') && p.merchant) await db.doc('ledger/' + dup.id).update({ merchant:p.merchant, cat:guessCat(p.merchant, dup.type) });
+        await db.doc('inbox/' + id).delete(); continue;
+      }
       if (p.type === 'cancel' && p.amount) {
         const hit = state.ledger.filter(e => !e.cancelled && e.type === 'out' && (!p.card || e.card === p.card) && +e.amount === p.amount)
           .sort((a, b) => ((b.date || '') + (b.time || '')).localeCompare((a.date || '') + (a.time || '')))[0];
