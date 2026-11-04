@@ -1002,6 +1002,7 @@ async function importData(file){
   (j.notices||[]).forEach(n => { const { id, ...d } = n; writes.push(['notices/' + id, d]); });
   if (Array.isArray(j.fixed) && j.fixed.length) { const have = new Set((state.fixed || []).map(f => f.id)); writes.push(['config/fixed', { items:(state.fixed || []).concat(j.fixed.filter(f => !have.has(f.id))), at:Date.now() }]); }
   (j.ledger||[]).forEach(x => { const { id, ...d } = x; writes.push(['ledger/' + (id || ('imp' + Math.random().toString(36).slice(2, 12))), { src:'import', cancelled:false, review:false, at:Date.now(), ...d }]); });
+  if (j.pay && typeof j.pay === 'object') { const cur = state.budget || {}; writes.push(['config/budget', { cards:cur.cards || {}, cats:cur.cats || {}, saves:cur.saves || [], pay:{ ...(cur.pay || {}), ...j.pay }, at:Date.now() }]); }
   if (j.config) writes.push(['config/main', j.config]);
   for (let i = 0; i < writes.length; i += 400) {
     const b = F.writeBatch(fs);
