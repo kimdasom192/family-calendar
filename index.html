@@ -64,7 +64,7 @@ header{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var
 .mstats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin-bottom:12px}
 .mstats div{background:var(--surface);padding:10px 12px;display:flex;flex-direction:column;gap:2px;min-width:0}
 .mstats span{font-size:12px;color:var(--muted)}
-.mstats b{font-size:16px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mstats b{font-size:clamp(13px,3.7vw,16px);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .out{color:var(--sun)} .in{color:var(--accent)}
 .bars{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;display:flex;flex-direction:column;gap:12px}
 .bar .top{display:flex;justify-content:space-between;gap:8px;font-size:13px;font-variant-numeric:tabular-nums}
@@ -87,6 +87,7 @@ header{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var
 .mtabs::-webkit-scrollbar{display:none}
 .mtabs button{flex:none;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 13px;font-size:13px;font-weight:500}
 .mtabs button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.mstats.inst3{grid-template-columns:1.12fr 1.12fr .76fr}
 .mstats.four{grid-template-columns:repeat(2,minmax(0,1fr))}
 @media (min-width:560px){.mstats.four{grid-template-columns:repeat(4,minmax(0,1fr))}}
 .save{color:var(--sat)} .amt.out{color:var(--sun)} .amt.in{color:var(--accent)} .amt.save{color:var(--sat)}
@@ -1519,6 +1520,7 @@ function detailSheet(spec){
   openSheet(`<div class="sh"><h3>${esc(title)}</h3><button class="ghost" data-close>닫기</button></div>
     <div class="mstats"><div><span>합계</span><b class="out">${won(total)}</b></div><div><span>건수</span><b>${items.length}건</b></div><div><span>${goal ? '목표 대비' : '할부'}</span><b>${goal ? Math.round(total / goal * 100) + '%' : won(items.filter(c => c.n).reduce((s2, c) => s2 + c.amt, 0))}</b></div></div>
     <p class="help" style="margin:0">${esc(sub)}</p>
+    ${(kind === 'card' || kind === 'bill') && installments().some(i => !i.done && i.x.card === name) ? `<div class="btns" style="margin:0"><button class="ghost" data-icard="${esc(name)}" style="height:36px">${esc(name)} 할부 ${installments().filter(i => !i.done && i.x.card === name).length}건 보기 ›</button></div>` : ''}
     ${brk.length > 1 ? `<div class="bars">${brk.map(([g, v]) => `<div class="bar nogoal"><div class="top"><span>${esc(g)}</span><span>${won(v)} <span class="help">${Math.round(v / total * 100)}%</span></span></div><div class="trk"><div class="fill" style="width:${(v / brk[0][1] * 100).toFixed(1)}%;background:var(--c-elder)"></div></div></div>`).join('')}</div>` : ''}
     ${items.length ? `<div class="dcard"><div class="items">${items.map(row).join('')}</div></div>` : '<div class="empty" style="padding:0">내역이 없어요.</div>'}`);
 }
@@ -1535,12 +1537,26 @@ function moneyList(){
       : '<div class="empty" style="padding:0">이번 달 내역이 없어요. 아래 입력칸에 "스타벅스 5300 하나카드"처럼 적으면 들어가요.</div>'}`;
 }
 function moneyInst(){
-  const all = installments(), act = all.filter(i => !i.done), done = all.filter(i => i.done).slice(0, 10);
+  const every = installments();
+  const order = ['하나카드','삼성카드','롯데카드','하나은행','현금'];
+  const cards = [...new Set(every.map(i => i.x.card || '기타'))].sort((a, b) => ((order.indexOf(a) + 1) || 99) - ((order.indexOf(b) + 1) || 99));
+  const f = state.instCard && cards.includes(state.instCard) ? state.instCard : '';
+  const all = f ? every.filter(i => (i.x.card || '기타') === f) : every;
+  const act = all.filter(i => !i.done), done = all.filter(i => i.done).slice(0, 10);
   const nowSum = act.reduce((s, i) => s + i.now, 0), remain = act.reduce((s, i) => s + i.remain, 0);
-  const row = i => `<button class="mrow" data-money="${esc(i.x.id)}"><span class="tm">${i.done ? '완료' : `${Math.max(1, i.k)}/${i.n}`}</span><span class="mm"><b>${esc(i.x.merchant || '')}</b><span class="tags"><span class="chipx">${esc(i.x.card || '')}</span><span>총 ${won(i.total)} · ${i.x.date.slice(2).replace(/-/g, '.')} 결제${+i.x.monthly ? ` · 매달 ${won(i.x.monthly)}` : ''}</span>${!i.done && i.k === i.n ? '<span class="chipx inst">이번 달로 끝나요</span>' : ''}${!i.done ? `<span>남은 ${won(i.remain)} · ${+i.endMk.slice(5)}월까지</span>` : ''}</span></span><span class="amt out">${i.done ? '' : '-' + won(i.now)}</span></button>`;
-  return `<div class="mstats"><div><span>이번 달 할부</span><b class="out">${won(nowSum)}</b></div><div><span>남은 할부 총액</span><b>${won(remain)}</b></div><div><span>진행 중</span><b>${act.length}건</b></div></div>
-    <p class="help" style="margin:0 0 10px">할부는 결제한 달부터 매달 나눠서 카드별 사용과 목표에 반영돼요. 카드 알림에 "3개월"처럼 찍히면 자동으로 들어오고, 내역을 눌러 개월 수를 고칠 수도 있어요.</p>
-    ${act.length ? `<div class="dcard"><div class="items">${act.map(row).join('')}</div></div>` : '<div class="empty" style="padding:0">진행 중인 할부가 없어요.</div>'}
+  const payLine = c => { const d = payInfo(c) && nextPayDate(c); if (!d) return ''; const b = billFor(c, d); return b && b.inst ? `${d.getMonth()+1}/${d.getDate()} 결제에 할부 ${won(b.inst)}` : ''; };
+  const row = i => `<button class="mrow" data-money="${esc(i.x.id)}"><span class="tm">${i.done ? '완료' : `${Math.max(1, i.k)}/${i.n}`}</span><span class="mm"><b>${esc(i.x.merchant || '')}</b><span class="tags">${f ? '' : `<span class="chipx">${esc(i.x.card || '')}</span>`}<span>총 ${won(i.total)} · ${i.x.date.slice(2).replace(/-/g, '.')} 결제${+i.x.monthly ? ` · 매달 ${won(i.x.monthly)}` : ''}</span>${!i.done && i.k === i.n ? '<span class="chipx inst">이번 달로 끝나요</span>' : ''}${!i.done ? `<span>남은 ${won(i.remain)} · ${i.endMk.slice(0, 4) === String(today0().getFullYear()) ? '' : i.endMk.slice(2, 4) + '년 '}${+i.endMk.slice(5)}월까지</span>` : ''}</span></span><span class="amt out">${i.done ? '' : '-' + won(i.now)}</span></button>`;
+  const chips = cards.length > 1 ? `<div class="mtabs ichips" role="group" aria-label="카드별 할부">${[['', '전체'], ...cards.map(c => [c, c])].map(([v, l]) => `<button data-icard="${esc(v)}" aria-pressed="${f === v}">${esc(l)}</button>`).join('')}</div>` : '';
+  const byCard = !f && cards.length > 1 ? `<div class="sec" style="margin-top:0">카드별 할부</div><div class="dcard" style="margin-bottom:12px"><div class="items">${cards.map(c => {
+      const a = every.filter(i => !i.done && (i.x.card || '기타') === c); if (!a.length) return '';
+      const pl = payLine(c);
+      return `<button class="mrow" data-icard="${esc(c)}"><span class="tm">${a.length}건</span><span class="mm"><b>${esc(c)} <span class="go">›</span></b><span class="tags"><span>남은 ${won(a.reduce((s, i) => s + i.remain, 0))}</span>${pl ? `<span>${pl}</span>` : ''}</span></span><span class="amt out">-${won(a.reduce((s, i) => s + i.now, 0))}</span></button>`; }).join('')}</div></div>` : '';
+  const fpl = f ? payLine(f) : '';
+  return `${chips}<div class="mstats inst3"><div><span>이번 달 할부</span><b class="out">${won(nowSum)}</b></div><div><span>남은 할부 총액</span><b>${won(remain)}</b></div><div><span>진행 중</span><b>${act.length}건</b></div></div>
+    ${fpl ? `<p class="help" style="margin:0 0 10px">${fpl}이 들어가요.</p>` : f ? '' : '<p class="help" style="margin:0 0 10px">할부는 결제한 달부터 매달 나눠서 카드별 사용과 목표에 반영돼요. 카드 알림에 "3개월"처럼 찍히면 자동으로 들어오고, 내역을 눌러 개월 수를 고칠 수도 있어요.</p>'}
+    ${byCard}
+    ${!f && cards.length > 1 && act.length ? '<div class="sec" style="margin-top:0">전체 할부</div>' : ''}
+    ${act.length ? `<div class="dcard"><div class="items">${act.map(row).join('')}</div></div>` : `<div class="empty" style="padding:0">${f ? esc(f) + '에 ' : ''}진행 중인 할부가 없어요.</div>`}
     ${done.length ? `<div class="sec">끝난 할부</div><div class="dcard"><div class="items">${done.map(row).join('')}</div></div>` : ''}`;
 }
 function moneyFixed(){
@@ -2064,6 +2080,7 @@ document.addEventListener('click', ev => {
   if (t.dataset.money) { editMoney(t.dataset.money); return; }
   if (t.hasAttribute('data-addmoney')) { editMoney(null); return; }
   if (t.hasAttribute('data-budget')) { budgetSheet(); return; }
+  if ('icard' in t.dataset) { state.instCard = t.dataset.icard; state.mtab = 'inst'; if (!$('#sheet').hidden) closeSheet(); renderView(); window.scrollTo(0, 0); return; }
   if (t.dataset.mtab) { state.mtab = t.dataset.mtab; renderView(); window.scrollTo(0, 0); return; }
   if (t.dataset.mdetail) { detailSheet(t.dataset.mdetail); return; }
   if (t.hasAttribute('data-addfixed')) { editFixed(null); return; }
