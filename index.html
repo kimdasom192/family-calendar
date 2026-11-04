@@ -1584,7 +1584,7 @@ function moneyList(){
     ${review.length ? `<div class="sec" style="margin-top:0;color:var(--sun)">확인이 필요한 내역 ${review.length}건</div><div class="dcard" style="margin-bottom:12px"><div class="items">${review.map(x => mrow(x)).join('')}</div></div>` : ''}
     ${oldInst.length ? `<div class="sec" style="margin-top:0">지난달 이전 할부 중 이번 달 몫</div><div class="dcard" style="margin-bottom:12px"><div class="items">${oldInst.map(c => mrow(c.x, `<span class="chipx inst">${c.k}/${c.n}회 · ${won(c.amt)}</span>`)).join('')}</div></div>` : ''}
     ${list.length ? `<div class="days">${Object.keys(groups).sort().reverse().map(ds => { const day = groups[ds]; const dsum = day.reduce((s, x) => s + spendOf(x), 0); return `<section class="dcard"><div class="dhead"><span class="d">${dLabel(ds)}</span><span class="t">${dsum ? '결제 ' + won(dsum) : ''}</span></div><div class="items">${day.map(x => mrow(x)).join('')}</div></section>`; }).join('')}</div>`
-      : '<div class="empty" style="padding:0">이번 달 내역이 없어요. 아래 입력칸에 "스타벅스 5300 ${state.book === 'mine' ? '카카오뱅크' : '하나카드'}"처럼 적으면 들어가요.</div>'}`;
+      : `<div class="empty" style="padding:0">이번 달 내역이 없어요. 아래 입력칸에 "스타벅스 5300 ${state.book === 'mine' ? '카카오뱅크' : '하나카드'}"처럼 적으면 들어가요.</div>`}`;
 }
 function moneyInst(){
   const every = installments();
