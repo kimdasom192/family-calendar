@@ -1224,7 +1224,7 @@ const MCAT_KW = [
   ['카페·간식', /(커피|카페|스타벅스|투썸|이디야|메가엠지씨|메가커피|컴포즈|빽다방|폴바셋|할리스|베이커리|파리바게|뚜레쥬르|던킨|배스킨|설빙|공차)/i],
   ['식비', /(식당|김밥|치킨|피자|버거|맥도날드|롯데리아|KFC|맘스터치|배달의민족|우아한형제|배민|요기요|쿠팡이츠|국밥|분식|족발|보쌈|고기|갈비|횟집|초밥|스시|반점|짬뽕|냉면|칼국수|도시락|한솥|본죽|푸드|음식)/i],
   ['마트·생활', /(이마트|홈플러스|롯데마트|코스트코|트레이더스|마트|다이소|GS25|지에스25|CU|씨유|세븐일레븐|편의점|노브랜드|하나로|쿠팡|컬리|생활)/i],
-  ['교통·차량', /(주유|오일|칼텍스|에너지|S-?OIL|충전소|택시|카카오T|카카오모빌|티머니|코레일|SRT|톨게이트|하이패스|주차|도로공사|정비|세차|타이어)/i],
+  ['교통·차량', /(기아|현대자동차|자동차|캐피탈|오일|칼텍스|에너지|S-?OIL|충전소|택시|카카오T|카카오모빌|티머니|코레일|SRT|톨게이트|하이패스|주차|도로공사|정비|세차|타이어)/i],
   ['반려동물', /(동물병원|동물의료|펫|애견|애완|반려|사료|고양이|강아지)/i],
   ['병원·약국', /(병원|의원|약국|치과|한의원|안과|소아|피부과|정형외과|내과|이비인후과|산부인과|메디|클리닉)/i],
   ['교육', /(학원|교습|교육|서점|교보|영풍|yes24|예스24|알라딘|스쿨|태권도|피아노|미술|수학|영어)/i],
@@ -1282,7 +1282,8 @@ function parseNotice(app, title, text, at){
 function addMonths(mk, n){ const [y, m] = mk.split('-').map(Number); return monthKey(new Date(y, m - 1 + n, 1)); }
 function mdiff(a, b){ const [ya, ma] = a.split('-').map(Number), [yb, mb] = b.split('-').map(Number); return (yb - ya) * 12 + (mb - ma); }
 function instOf(x){ const n = +x.inst || 0; return n > 1 ? n : 0; }
-function portion(x, k){ const n = instOf(x), a = +x.amount || 0; if (!n) return a; const base = Math.floor(a / n / 10) * 10; return k === n ? a - base * (n - 1) : base; }
+function portion(x, k){ const n = instOf(x), a = +x.amount || 0; if (!n) return a; if (+x.monthly) return +x.monthly; const base = Math.floor(a / n / 10) * 10; return k === n ? a - base * (n - 1) : base; }
+function instStartMk(x){ return /^\d{4}-\d{2}$/.test(x.instStart || '') ? x.instStart : (x.date || '').slice(0, 7); }
 function spendOf(x){ return x.type === 'out' && !x.cancelled ? (+x.amount || 0) : 0; }
 function chargesFor(mk){
   const out = [];
@@ -1291,7 +1292,7 @@ function chargesFor(mk){
     const pm = (x.date || '').slice(0, 7); if (!pm) return;
     const n = instOf(x);
     if (!n) { if (pm === mk) out.push({ x, amt:+x.amount || 0, k:0, n:0 }); return; }
-    const k = mdiff(pm, mk) + 1;
+    const k = mdiff(instStartMk(x), mk) + 1;
     if (k >= 1 && k <= n) out.push({ x, amt:portion(x, k), k, n });
   });
   return out;
@@ -1323,7 +1324,7 @@ function billFor(card, payDate){
     if (x.card !== card || x.type !== 'out' || x.cancelled || !x.date) return;
     const pm = payMonthOf(x.date, p), n = instOf(x);
     if (!n) { if (pm === M) { total += +x.amount || 0; count++; } return; }
-    const k = mdiff(pm, M) + 1; if (k >= 1 && k <= n) { const a = portion(x, k); total += a; inst += a; count++; }
+    const k = mdiff(x.instStart ? x.instStart : pm, M) + 1; if (k >= 1 && k <= n) { const a = portion(x, k); total += a; inst += a; count++; }
   });
   return { total, inst, count, start, end, date:payDate };
 }
@@ -1331,9 +1332,10 @@ function billFor(card, payDate){
 function installments(){
   const mk = monthKey(today0());
   return state.ledger.filter(x => x.type === 'out' && !x.cancelled && instOf(x) && x.date).map(x => {
-    const n = instOf(x), k = mdiff(x.date.slice(0, 7), mk) + 1;
+    const n = instOf(x), st = instStartMk(x), k = mdiff(st, mk) + 1;
+    const total = +x.monthly ? +x.monthly * n : (+x.amount || 0);
     let paid = 0; for (let i = 1; i <= Math.min(n, Math.max(0, k)); i++) paid += portion(x, i);
-    return { x, n, k, now: k >= 1 && k <= n ? portion(x, k) : 0, remain: Math.max(0, (+x.amount || 0) - paid), done: k > n, endMk: addMonths(x.date.slice(0, 7), n - 1) };
+    return { x, n, k, total, now: k >= 1 && k <= n ? portion(x, k) : 0, remain: Math.max(0, total - paid), done: k > n, endMk: addMonths(st, n - 1) };
   }).sort((a, b) => (a.done - b.done) || a.endMk.localeCompare(b.endMk));
 }
 /* 고정지출 */
@@ -1498,7 +1500,7 @@ function moneyList(){
 function moneyInst(){
   const all = installments(), act = all.filter(i => !i.done), done = all.filter(i => i.done).slice(0, 10);
   const nowSum = act.reduce((s, i) => s + i.now, 0), remain = act.reduce((s, i) => s + i.remain, 0);
-  const row = i => `<button class="mrow" data-money="${esc(i.x.id)}"><span class="tm">${i.done ? '완료' : `${Math.max(1, i.k)}/${i.n}`}</span><span class="mm"><b>${esc(i.x.merchant || '')}</b><span class="tags"><span class="chipx">${esc(i.x.card || '')}</span><span>총 ${won(i.x.amount)} · ${i.x.date.slice(2).replace(/-/g, '.')} 결제</span>${!i.done && i.k === i.n ? '<span class="chipx inst">이번 달로 끝나요</span>' : ''}${!i.done ? `<span>남은 ${won(i.remain)} · ${+i.endMk.slice(5)}월까지</span>` : ''}</span></span><span class="amt out">${i.done ? '' : '-' + won(i.now)}</span></button>`;
+  const row = i => `<button class="mrow" data-money="${esc(i.x.id)}"><span class="tm">${i.done ? '완료' : `${Math.max(1, i.k)}/${i.n}`}</span><span class="mm"><b>${esc(i.x.merchant || '')}</b><span class="tags"><span class="chipx">${esc(i.x.card || '')}</span><span>총 ${won(i.total)} · ${i.x.date.slice(2).replace(/-/g, '.')} 결제${+i.x.monthly ? ` · 매달 ${won(i.x.monthly)}` : ''}</span>${!i.done && i.k === i.n ? '<span class="chipx inst">이번 달로 끝나요</span>' : ''}${!i.done ? `<span>남은 ${won(i.remain)} · ${+i.endMk.slice(5)}월까지</span>` : ''}</span></span><span class="amt out">${i.done ? '' : '-' + won(i.now)}</span></button>`;
   return `<div class="mstats"><div><span>이번 달 할부</span><b class="out">${won(nowSum)}</b></div><div><span>남은 할부 총액</span><b>${won(remain)}</b></div><div><span>진행 중</span><b>${act.length}건</b></div></div>
     <p class="help" style="margin:0 0 10px">할부는 결제한 달부터 매달 나눠서 카드별 사용과 목표에 반영돼요. 카드 알림에 "3개월"처럼 찍히면 자동으로 들어오고, 내역을 눌러 개월 수를 고칠 수도 있어요.</p>
     ${act.length ? `<div class="dcard"><div class="items">${act.map(row).join('')}</div></div>` : '<div class="empty" style="padding:0">진행 중인 할부가 없어요.</div>'}
@@ -1536,6 +1538,7 @@ function editMoney(id){
     <div class="fld"><label for="m_mer">사용처</label><input id="m_mer" value="${esc(x.merchant || '')}" ${dis}></div>
     <div class="row2"><div class="fld"><label for="m_date">날짜</label><input id="m_date" type="date" value="${x.date || ''}" ${dis}></div><div class="fld"><label for="m_time">시간</label><input id="m_time" type="time" value="${x.time || ''}" ${dis}></div></div>
     <div class="row2" id="m_outrow"><div class="fld"><label for="m_cat">카테고리</label><select id="m_cat" ${dis}>${MCATS.map(c => `<option ${x.cat === c ? 'selected' : ''}>${c}</option>`).join('')}</select></div><div class="fld"><label for="m_inst">할부</label><select id="m_inst" ${dis}><option value="0">일시불</option>${Array.from({ length:23 }, (_, i) => i + 2).map(n => `<option value="${n}" ${instOf(x) === n ? 'selected' : ''}>${n}개월</option>`).join('')}</select></div></div>
+    <div class="row2" id="m_instrow"><div class="fld"><label for="m_monthly">매달 청구액 (선택)</label><input id="m_monthly" inputmode="numeric" placeholder="비우면 총액÷개월" value="${+x.monthly || ''}" ${dis}></div><div class="fld"><label for="m_round">이번 달 회차 (선택)</label><input id="m_round" inputmode="numeric" placeholder="예: 21" value="${x.instStart ? mdiff(x.instStart, monthKey(today0())) + 1 : ''}" ${dis}></div></div>
     <div class="fld" id="m_goalrow"><label for="m_goal">저축 목표</label><select id="m_goal" ${dis}><option value="">(목표 없음)</option>${saves.map(g => `<option value="${esc(g.id)}" ${x.goal === g.id ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}</select></div>
     <div class="row2"><div class="fld"><label for="m_who">누가</label><select id="m_who" ${dis}>${PERSONS.map(k => `<option value="${k}" ${x.who === k ? 'selected' : ''}>${esc(catLabel(k))}</option>`).join('')}</select></div><div class="fld"><label for="m_memo">메모</label><input id="m_memo" value="${esc(x.memo || '')}" ${dis}></div></div>
     <div class="help" id="m_instinfo"></div>
@@ -1548,6 +1551,7 @@ function editMoney(id){
       root.querySelectorAll('[data-mt]').forEach(y => y.setAttribute('aria-pressed', y.dataset.mt === type));
       root.querySelector('#m_outrow').hidden = type !== 'out';
       root.querySelector('#m_goalrow').hidden = type !== 'save';
+      root.querySelector('#m_instrow').hidden = !(type === 'out' && +root.querySelector('#m_inst').value > 1);
       const n = +root.querySelector('#m_inst').value, a = +String(root.querySelector('#m_amt').value).replace(/[^\d]/g, '');
       root.querySelector('#m_instinfo').textContent = type === 'out' && n > 1 && a ? `매달 ${won(portion({ amount:a, inst:n }, 1))}씩 ${n}개월 (마지막 달 ${won(portion({ amount:a, inst:n }, n))})` : '';
     };
@@ -1561,7 +1565,8 @@ function editMoney(id){
       const merchant = root.querySelector('#m_mer').value.trim() || TYPE_KO[type];
       const cat = type === 'out' ? root.querySelector('#m_cat').value : type === 'save' ? '저축' : '입금';
       const n = type === 'out' ? +root.querySelector('#m_inst').value : 0;
-      const ne = { ...(isNew ? {} : x), type, amount, merchant, card:root.querySelector('#m_card').value, date:root.querySelector('#m_date').value || x.date, time:root.querySelector('#m_time').value, cat, inst:n > 1 ? n : 0, goal: type === 'save' ? root.querySelector('#m_goal').value : '', who:root.querySelector('#m_who').value, memo:root.querySelector('#m_memo').value.trim(), cancelled: !!(root.querySelector('#m_cx') && root.querySelector('#m_cx').checked), review:false, src: isNew ? 'manual' : (x.src || 'manual') };
+      const monthly = n > 1 ? numIn(root.querySelector('#m_monthly').value) : 0, round = n > 1 ? numIn(root.querySelector('#m_round').value) : 0;
+      const ne = { ...(isNew ? {} : x), type, amount, merchant, card:root.querySelector('#m_card').value, date:root.querySelector('#m_date').value || x.date, time:root.querySelector('#m_time').value, cat, inst:n > 1 ? n : 0, monthly: monthly || 0, instStart: round ? addMonths(monthKey(today0()), 1 - round) : '', goal: type === 'save' ? root.querySelector('#m_goal').value : '', who:root.querySelector('#m_who').value, memo:root.querySelector('#m_memo').value.trim(), cancelled: !!(root.querySelector('#m_cx') && root.querySelector('#m_cx').checked), review:false, src: isNew ? 'manual' : (x.src || 'manual') };
       delete ne.id;
       try {
         isNew ? await api.addMoney(ne) : await api.setMoney(id, ne);
@@ -1664,7 +1669,7 @@ function exportSheet(){
         X.utils.book_append_sheet(wb, X.utils.json_to_sheet(rows.length ? rows : [{ 날짜:'내역 없음' }]), '내역');
         const sum = []; months.forEach(m => { const cs = cardSpend(m), ks = catSpend(m); Object.keys(cs).forEach(c => sum.push({ 월:m, 구분:'카드', 이름:c, 금액:cs[c], 목표:+B().cards[c] || '' })); Object.keys(ks).forEach(c => sum.push({ 월:m, 구분:'카테고리', 이름:c, 금액:ks[c], 목표:+B().cats[c] || '' })); sum.push({ 월:m, 구분:'합계', 이름:'지출', 금액:monthOut(m) }, { 월:m, 구분:'합계', 이름:'입금', 금액:monthIn(m) }, { 월:m, 구분:'합계', 이름:'저축', 금액:monthSave(m) }); });
         X.utils.book_append_sheet(wb, X.utils.json_to_sheet(sum), '합계');
-        X.utils.book_append_sheet(wb, X.utils.json_to_sheet(installments().map(i => ({ 결제일:i.x.date, 사용처:i.x.merchant, 카드:i.x.card, 총액:+i.x.amount, 개월:i.n, 회차:i.done ? '완료' : `${Math.max(1, i.k)}/${i.n}`, '이번 달':i.now, 남은금액:i.remain, 끝나는달:i.endMk }))), '할부');
+        X.utils.book_append_sheet(wb, X.utils.json_to_sheet(installments().map(i => ({ 결제일:i.x.date, 사용처:i.x.merchant, 카드:i.x.card, 총액:i.total, 매달:+i.x.monthly || '', 개월:i.n, 회차:i.done ? '완료' : `${Math.max(1, i.k)}/${i.n}`, '이번 달':i.now, 남은금액:i.remain, 끝나는달:i.endMk }))), '할부');
         X.utils.book_append_sheet(wb, X.utils.json_to_sheet(fixedItems().map(f => ({ 이름:f.name, 구분:f.type === 'save' ? '정기 저축' : '지출', 금액:+f.amount, 매달:f.day + '일', '카드·계좌':f.card, 카테고리:f.cat, 자동기록:f.auto ? '예' : '아니오' }))), '고정지출');
         X.writeFile(wb, `가족가계부_${range === 'month' ? mk : y}.xlsx`);
         msg.textContent = '파일을 받았어요. 휴대폰은 다운로드(내 파일) 폴더에서 열 수 있어요.';
