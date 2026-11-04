@@ -90,6 +90,7 @@ header{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var
 .bookbar{display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:10px;background:var(--surface)}
 .bookbar button{border:0;background:none;padding:10px 6px;font-size:14px;font-weight:600;color:var(--muted)}
 .bookbar button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.dcard.today{margin-bottom:12px}
 .bookhelp{margin:-2px 0 10px}
 .mstats.inst3{grid-template-columns:1.12fr 1.12fr .76fr}
 .mstats.four{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -1081,7 +1082,7 @@ async function boot(){
   db.collection('annivs').onSnapshot(s => { state.annivs = s.docs.map(d => ({ id:d.id, ...d.data() })); render(); }, onErr);
   db.collection('members').onSnapshot(s => { const m = {}; s.docs.forEach(d => { if (PERSONS.includes(d.data().who)) m[d.id] = d.data().who; }); state.members = m; if (state.loaded) maybeAskWho(); render(); }, onErr);
   const showing = bk => state.book === bk;
-  db.collection('ledger').onSnapshot(s => { books.fam.ledger = s.docs.map(d => ({ id:d.id, ...d.data() })); cleanTestLeftovers(); if (showing('fam') && (state.view === 'money' || state.view === 'day')) renderView(); renderNotices(); if (!s.metadata.fromCache) scheduleBudgetCheck(); }, onErr);
+  db.collection('ledger').onSnapshot(s => { books.fam.ledger = s.docs.map(d => ({ id:d.id, ...d.data() })); cleanTestLeftovers(); if (!s.metadata.fromCache) repairAuto('fam'); if (showing('fam') && (state.view === 'money' || state.view === 'day')) renderView(); renderNotices(); if (!s.metadata.fromCache) scheduleBudgetCheck(); }, onErr);
   db.doc('config/budget').onSnapshot(s => { books.fam.budget = s.exists ? s.data() : {}; if (showing('fam') && state.view === 'money') renderView(); renderNotices(); }, onErr);
   db.doc('config/fixed').onSnapshot(s => { books.fam.fixed = (s.exists && s.data().items) || []; if (showing('fam') && state.view === 'money') renderView(); if (!s.metadata.fromCache) scheduleBudgetCheck(); }, onErr);
   db.doc('config/catmap').onSnapshot(s => { books.fam.catmap = (s.exists && s.data().map) || {}; }, onErr);
@@ -1092,7 +1093,7 @@ async function boot(){
     // 나만 보는 가계부: 규칙상 본인만 읽고 쓸 수 있어요. 아직 준비 전이면 조용히 넘어가요.
     const P = `private/${me}/`, pErr = e => { state.mineErr = (e && (e.code || e.message)) || 'error'; };
     const ok = () => { state.mineErr = ''; };
-    db.collection(P + 'ledger').onSnapshot(s => { ok(); books.mine.ledger = s.docs.map(d => ({ id:d.id, ...d.data() })); if (state.view === 'money' || (showing('mine') && state.view === 'day')) renderView(); if (!s.metadata.fromCache) scheduleBudgetCheck(); }, pErr);
+    db.collection(P + 'ledger').onSnapshot(s => { ok(); books.mine.ledger = s.docs.map(d => ({ id:d.id, ...d.data() })); if (!s.metadata.fromCache) repairAuto('mine'); if (state.view === 'money' || (showing('mine') && state.view === 'day')) renderView(); if (!s.metadata.fromCache) scheduleBudgetCheck(); }, pErr);
     db.doc(P + 'config/budget').onSnapshot(s => { books.mine.budget = s.exists ? s.data() : {}; if (showing('mine') && state.view === 'money') renderView(); }, pErr);
     db.doc(P + 'config/fixed').onSnapshot(s => { books.mine.fixed = (s.exists && s.data().items) || []; if (showing('mine') && state.view === 'money') renderView(); if (!s.metadata.fromCache) scheduleBudgetCheck(); }, pErr);
     db.doc(P + 'config/catmap').onSnapshot(s => { books.mine.catmap = (s.exists && s.data().map) || {}; }, pErr);
@@ -1306,10 +1307,10 @@ function parseNotice(app, title, text, at, bk){
   if (at && at < 1e12) at = at * 1000;
   const card = detectCard(app, raw, bk);
   let amount = 0;
-  for (const m of raw.matchAll(/([0-9][0-9,]{0,13})\s*원/g)) {
+  for (const m of raw.matchAll(/(?:[₩￦]\s*([0-9][0-9,]{0,13})(?![0-9,]*\s*원))|(?:([0-9][0-9,]{0,13})\s*원)/g)) {
     const ctx = raw.slice(Math.max(0, m.index - 8), m.index);
     if (/(누적|잔액|한도|포인트|가용|이용가능|청구)\s*[:：]?\s*$/.test(ctx)) continue;
-    amount = +m[1].replace(/,/g, ''); if (amount) break;
+    amount = +(m[1] || m[2]).replace(/,/g, ''); if (amount) break;
   }
   let type = 'out';
   if (/취소/.test(raw)) type = 'cancel';
@@ -1322,7 +1323,7 @@ function parseNotice(app, title, text, at, bk){
   const installment = inst ? `${inst}개월 할부` : /일시불/.test(raw) ? '일시불' : '';
   // 가맹점: 알려진 말을 지우고 남는 것 중 가장 그럴듯한 줄
   const STRIP = [/\[[^\]]*\]/g, /\([^)]*\)/g, /Web발신/gi, /monimo|모니모|디지로카|하나Pay|하나페이|하나원큐|카카오\s*(뱅크|페이)|kakao\s*(bank|pay)|IBK|i-?ONE\s*Bank|기업은행|신한\s*(SOL|쏠)?\s*(뱅크|은행)?/gi, /(삼성|하나|롯데)\s*(카드|은행|Pay|페이)?/g, /LOCA/gi, /원큐|1Q/gi,
-    /[0-9][0-9,]*\s*원/g, /\d{1,2}[\/.\-]\d{1,2}\s*\d{1,2}:\d{2}/g, /\d{1,2}:\d{2}/g, /\d{1,2}\s*개월/g,
+    /[₩￦]\s*[0-9][0-9,]*\s*원?/g, /[0-9][0-9,]*\s*원/g, /\d{1,2}[\/.\-]\d{1,2}\s*\d{1,2}:\d{2}/g, /\d{1,2}:\d{2}/g, /\d{1,2}\s*개월/g,
     /(승인|결제|일시불|할부|체크|신용|해외|국내|누적|잔액|한도|사용|이용|금액|가맹점|고객님|회원님|님|취소|정상|완료|출금|입금|이체|알림|카드)/g,
     /\S\*+\S?/g, /\*{2,}\d*/g, /\d{3,}/g, /[:：|·•,]/g];
   const cand = raw.split(/\n|\s\/\s/).map(l => { let x = l; STRIP.forEach(re => { x = x.replace(re, ' '); }); return x.replace(/\s+/g, ' ').trim(); }).filter(x => x.length >= 2);
@@ -1459,6 +1460,18 @@ async function processInbox(docs, bk){
   } catch(e){}
   inboxBusyBk[bk] = false;
 }
+const repaired = {};
+async function repairAuto(bk){
+  if (!db || local) return;
+  for (const x of books[bk].ledger) {
+    if (x.src !== 'auto' || !x.review || +x.amount || !x.raw || repaired[x.id]) continue;
+    const p = parseNotice('', '', x.raw, x.at, bk); if (!p.amount) continue;
+    repaired[x.id] = 1;
+    const type = p.type === 'cancel' ? 'in' : p.type;
+    const merchant = (p.type === 'cancel' ? '취소 ' : '') + (p.merchant || (type === 'in' ? '입금' : '가맹점 확인 필요'));
+    try { await db.doc(bp('ledger/' + x.id, bk)).update({ amount:p.amount, type, merchant, card:(x.card && x.card !== '기타') ? x.card : (p.card || '기타'), cat:inBook(bk, () => guessCat(p.merchant, type)), review:false }); } catch(e){}
+  }
+}
 let cleaned = false;
 async function cleanTestLeftovers(){
   if (cleaned || !db || local) return;
@@ -1539,7 +1552,11 @@ function moneySum(){
   const isNow = mk === monthKey(today0());
   const plan = nextMonthPlan();
   const pays = cards().filter(c => payInfo(c)).map(c => { const d = nextPayDate(c); const bill = billFor(c, d); return { c, d, bill }; }).sort((a, c) => a.d - c.d);
-  return `<div class="mstats four"><div><span>지출</span><b class="out">${won(out)}</b></div><div><span>입금</span><b class="in">${won(inn)}</b></div><div><span>저축</span><b class="save">${won(sav)}</b></div><div><span>남은 돈</span><b>${won(inn - out - sav)}</b></div></div>
+  const tkey = x => x.time || (x.at ? (d => `${pad(d.getHours())}:${pad(d.getMinutes())}`)(new Date(x.at)) : '');
+  const td = ymd(today0()), tdl = isNow ? state.ledger.filter(x => x.date === td).sort((a, c) => tkey(c).localeCompare(tkey(a))) : [];
+  const tdOut = tdl.filter(x => x.type === 'out' && !x.cancelled).reduce((s2, x) => s2 + (+x.amount || 0), 0);
+  const today = isNow ? `<section class="dcard today"><div class="dhead"><span class="d">오늘 · ${dLabel(td)}</span><span class="t">${tdl.length ? `${tdOut ? '결제 ' + won(tdOut) + ' · ' : ''}${tdl.length}건` : ''}</span></div>${tdl.length ? `<div class="items">${tdl.map(x => mrow(x)).join('')}</div>` : '<div class="empty" style="padding:12px 14px">오늘은 아직 쓴 돈이 없어요.</div>'}</section>` : '';
+  return today + `<div class="mstats four"><div><span>지출</span><b class="out">${won(out)}</b></div><div><span>입금</span><b class="in">${won(inn)}</b></div><div><span>저축</span><b class="save">${won(sav)}</b></div><div><span>남은 돈</span><b>${won(inn - out - sav)}</b></div></div>
     <div class="cmp">지난달보다 지출 <b class="${out > pout ? 'out' : 'in'}">${pctTxt(out, pout)}</b> <span class="help">(지난달 ${won(pout)})</span>${deltas.length ? `<div class="help">${deltas.map(x => `${esc(x.c)} ${x.d > 0 ? '+' : ''}${won(x.d)}`).join(' · ')}</div>` : ''}</div>
     <div class="btns" style="margin-bottom:12px">${state.readOnly ? '' : '<button class="primary" data-addmoney style="height:38px">+ 내역 추가</button>'}<button class="ghost" data-export>엑셀로 받기</button></div>
     ${isNow && pays.length ? `<div class="sec" style="margin-top:0">카드 결제 예정</div><div class="bars">${pays.map(p => `<div class="bar nogoal tap" data-mdetail="bill|${esc(p.c)}" role="button" tabindex="0"><div class="top"><span>${esc(p.c)} · ${p.d.getMonth()+1}/${p.d.getDate()} 결제</span><span><b>${won(p.bill.total)}</b> <span class="help">D-${Math.round((p.d - today0()) / 864e5)}</span></span></div><div class="help">${p.bill.start.getMonth()+1}/${p.bill.start.getDate()}~${p.bill.end.getMonth()+1}/${p.bill.end.getDate()} 사용분${p.bill.inst ? ` · 할부 ${won(p.bill.inst)} 포함` : ''}</div></div>`).join('')}</div>` : ''}
