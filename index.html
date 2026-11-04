@@ -1053,7 +1053,7 @@ async function boot(){
   db.collection('work').onSnapshot(s => { const w = {}; s.docs.forEach(d => { w[d.id] = d.data(); }); state.work = w; render(); }, onErr);
   db.collection('annivs').onSnapshot(s => { state.annivs = s.docs.map(d => ({ id:d.id, ...d.data() })); render(); }, onErr);
   db.collection('members').onSnapshot(s => { const m = {}; s.docs.forEach(d => { if (PERSONS.includes(d.data().who)) m[d.id] = d.data().who; }); state.members = m; if (state.loaded) maybeAskWho(); render(); }, onErr);
-  db.collection('ledger').onSnapshot(s => { state.ledger = s.docs.map(d => ({ id:d.id, ...d.data() })); if (state.view === 'money' || state.view === 'day') renderView(); renderNotices(); if (!s.metadata.fromCache) scheduleBudgetCheck(); }, onErr);
+  db.collection('ledger').onSnapshot(s => { state.ledger = s.docs.map(d => ({ id:d.id, ...d.data() })); cleanTestLeftovers(); if (state.view === 'money' || state.view === 'day') renderView(); renderNotices(); if (!s.metadata.fromCache) scheduleBudgetCheck(); }, onErr);
   db.doc('config/budget').onSnapshot(s => { state.budget = s.exists ? s.data() : {}; if (state.view === 'money') renderView(); renderNotices(); }, onErr);
   db.doc('config/fixed').onSnapshot(s => { state.fixed = (s.exists && s.data().items) || []; if (state.view === 'money') renderView(); if (!s.metadata.fromCache) scheduleBudgetCheck(); }, onErr);
   db.doc('config/catmap').onSnapshot(s => { state.catmap = (s.exists && s.data().map) || {}; }, onErr);
@@ -1373,7 +1373,8 @@ async function processInbox(docs){
   try {
     for (const d of docs) {
       const x = d.data(), id = d.id;
-      const p = parseNotice(x.app, x.title, x.text, x.at);
+      const unbrace = v => String(v || '').trim().replace(/^\{+/, '').replace(/\}+$/, '');
+      const p = parseNotice(unbrace(x.app), x.title, unbrace(x.text), x.at);
       // 광고·안내처럼 금액도 결제 말도 없는 알림은 버리기
       if (!p.amount && !/[가-힣A-Za-z0-9]/.test((p.raw || '').replace(/lv=t|not_\w+|notification|[{}|\/]/g, ''))) { await db.doc('inbox/' + id).delete(); await db.collection('log').add({ act:'alert', type:'budget', lv:0, ref:'', date:'', changes:['진우 님 휴대폰에서 보낸 시험 알림이 잘 도착했어요.'], title:'📱 카드 알림 연결 확인', at:Date.now(), by:'system' }); continue; }
       if (!p.amount && !/(승인|결제|입금|출금|취소|이체|사용)/.test(p.raw)) { await db.doc('inbox/' + id).delete(); continue; }
@@ -1398,6 +1399,13 @@ async function processInbox(docs){
     }
   } catch(e){}
   inboxBusy = false;
+}
+let cleaned = false;
+async function cleanTestLeftovers(){
+  if (cleaned || !db || local) return;
+  const junk = state.ledger.filter(x => x.src === 'auto' && x.review && !+x.amount && (/연결 시험/.test(x.raw || '') || !/[가-힣A-Za-z0-9]/.test(String(x.raw || '').replace(/lv=t|not_\w+|notification|[{}|\/]/g, ''))));
+  if (!junk.length) return; cleaned = true;
+  for (const x of junk) { try { await db.doc('ledger/' + x.id).delete(); } catch(e){} }
 }
 function scheduleBudgetCheck(){ clearTimeout(budgetTimer); budgetTimer = setTimeout(() => { checkBudgets(); autoFixed(); }, 1500); }
 async function checkBudgets(){
