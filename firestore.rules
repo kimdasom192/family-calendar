@@ -5,8 +5,14 @@ service cloud.firestore {
       return request.auth != null
         && request.auth.token.email in ['me@family-cal.app', 'hus@family-cal.app', 'kid1@family-cal.app', 'kid2@family-cal.app'];
     }
-    match /{document=**} {
-      allow read, write: if family();
+    // 가족 공유 데이터 (private 아래는 제외)
+    match /{col}/{document=**} {
+      allow read, write: if family() && col != 'private';
     }
+    // 나만 보는 가계부: 본인만 읽고 쓰기
+    match /private/{uid}/{document=**} {
+      allow read, write: if family() && request.auth.uid == uid;
+    }
+    // 휴대폰 알림 받는 곳(inbox, private/{uid}/inbox)은 비밀 키가 맞을 때만 쓰기 허용 — 키는 Firebase 콘솔에만 넣어 두세요.
   }
 }
