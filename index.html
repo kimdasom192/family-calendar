@@ -94,6 +94,10 @@ header{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var
 .gcard{background:var(--bg);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
 .chipx.inst{border-color:var(--sat);color:var(--sat)} .chipx.ok{border-color:var(--accent);color:var(--accent)} .chipx.bad{border-color:var(--sun);color:var(--sun)}
 .bar.ok .fill{background:var(--sat)}
+button.bar{display:block;width:100%;border:0;background:none;padding:0;text-align:left;font:inherit;color:inherit}
+.bar.tap{cursor:pointer;border-radius:8px}
+.bar.tap:hover{background:var(--surface2)}
+.go{color:var(--muted);font-weight:400}
 .newtag{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.04em;color:var(--surface);background:var(--sun);border-radius:4px;padding:0 4px;margin-left:4px;vertical-align:1px}
 .ev.isnew{outline:1.5px solid var(--sun);outline-offset:-1px}
 .sync{display:inline-flex;align-items:center;gap:5px;border:0;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:600;letter-spacing:0;background:var(--surface2);color:var(--muted)}
@@ -996,6 +1000,7 @@ async function importData(file){
   Object.entries(j.work||{}).forEach(([ds, w]) => writes.push(['work/' + ds, w]));
   (j.annivs||[]).forEach(a => { const { id, ...d } = a; writes.push(['annivs/' + id, d]); });
   (j.notices||[]).forEach(n => { const { id, ...d } = n; writes.push(['notices/' + id, d]); });
+  if (Array.isArray(j.fixed) && j.fixed.length) { const have = new Set((state.fixed || []).map(f => f.id)); writes.push(['config/fixed', { items:(state.fixed || []).concat(j.fixed.filter(f => !have.has(f.id))), at:Date.now() }]); }
   (j.ledger||[]).forEach(x => { const { id, ...d } = x; writes.push(['ledger/' + (id || ('imp' + Math.random().toString(36).slice(2, 12))), { src:'import', cancelled:false, review:false, at:Date.now(), ...d }]); });
   if (j.config) writes.push(['config/main', j.config]);
   for (let i = 0; i < writes.length; i += 400) {
@@ -1219,8 +1224,11 @@ function editNotice(id){
 }
 /* ---------- 가계부 ---------- */
 const CARDS = ['삼성카드','하나카드','롯데카드','하나은행','현금','기타'];
-const MCATS = ['식비','카페·간식','마트·생활','교통·차량','병원·약국','반려동물','교육','쇼핑','통신·공과금','구독','경조사·선물','여가','이체','입금','저축','기타'];
+const MCATS = ['식비','카페·간식','마트·생활','교통·차량','병원·약국','반려동물','교육','쇼핑','통신·공과금','주거·대출','보험','세금','구독','경조사·선물','여가','이체','입금','저축','기타'];
 const MCAT_KW = [
+  ['주거·대출', /(주택금융공사|대출이자|원리금|관리비|월세)/i],
+  ['보험', /(보험|메리츠|삼성화|화재|생명|손해)/i],
+  ['세금', /(재산세|주민세|자동차세|지방세|국세|세외수입)/i],
   ['구독', /(멜론|네이버플러스|ANTHROPIC|CLAUDE|넷플릭스|유튜브\s*프리미엄|디즈니|티빙|웨이브|쿠팡\s*와우|정기결제)/i],
   ['카페·간식', /(커피|카페|스타벅스|투썸|이디야|메가엠지씨|메가커피|컴포즈|빽다방|폴바셋|할리스|베이커리|파리바게|뚜레쥬르|던킨|배스킨|설빙|공차)/i],
   ['식비', /(식당|김밥|치킨|피자|버거|맥도날드|롯데리아|KFC|맘스터치|배달의민족|우아한형제|배민|요기요|쿠팡이츠|국밥|분식|족발|보쌈|고기|갈비|횟집|초밥|스시|반점|짬뽕|냉면|칼국수|도시락|한솥|본죽|푸드|음식)/i],
@@ -1320,14 +1328,14 @@ function billFor(card, payDate){
   const M = monthKey(payDate);
   const start = p.start === 1 ? new Date(payDate.getFullYear(), payDate.getMonth() - 1, 1) : new Date(payDate.getFullYear(), payDate.getMonth() - 2, p.start);
   const end = addDays(new Date(start.getFullYear(), start.getMonth() + 1, start.getDate()), -1);
-  let total = 0, inst = 0, count = 0;
+  let total = 0, inst = 0, count = 0; const items = [];
   state.ledger.forEach(x => {
     if (x.card !== card || x.type !== 'out' || x.cancelled || !x.date) return;
     const pm = payMonthOf(x.date, p), n = instOf(x);
-    if (!n) { if (pm === M) { total += +x.amount || 0; count++; } return; }
-    const k = mdiff(x.instStart ? x.instStart : pm, M) + 1; if (k >= 1 && k <= n) { const a = portion(x, k); total += a; inst += a; count++; }
+    if (!n) { if (pm === M) { total += +x.amount || 0; count++; items.push({ x, amt:+x.amount || 0, k:0, n:0 }); } return; }
+    const k = mdiff(x.instStart ? x.instStart : pm, M) + 1; if (k >= 1 && k <= n) { const a = portion(x, k); total += a; inst += a; count++; items.push({ x, amt:a, k, n }); }
   });
-  return { total, inst, count, start, end, date:payDate };
+  return { total, inst, count, items, start, end, date:payDate };
 }
 /* 할부 현황 */
 function installments(){
@@ -1381,6 +1389,9 @@ async function processInbox(docs){
       // 광고·안내처럼 금액도 결제 말도 없는 알림은 버리기
       if (!p.amount && !/[가-힣A-Za-z0-9]/.test((p.raw || '').replace(/lv=t|not_\w+|notification|[{}|\/]/g, ''))) { await db.doc('inbox/' + id).delete(); await db.collection('log').add({ act:'alert', type:'budget', lv:0, ref:'', date:'', changes:['진우 님 휴대폰에서 보낸 시험 알림이 잘 도착했어요.'], title:'📱 카드 알림 연결 확인', at:Date.now(), by:'system' }); continue; }
       if (!p.amount && !/(승인|결제|입금|출금|취소|이체|사용)/.test(p.raw)) { await db.doc('inbox/' + id).delete(); continue; }
+      // 카드값 결제·본인 계좌 이체는 이미 카드 쪽에 있으니 빼기
+      if (p.card === '하나은행') { const own = ((state.config.names.surname || '') + (state.config.names.hus || '')).trim();
+        if ((p.type === 'out' && /(카드\s*결제|카드대금|즉시결제|삼성카드|롯데카드|하나카드|현대카드|신한카드|국민카드|우리카드|BC카드|비씨카드)/.test(p.raw)) || (own.length > 1 && p.raw.includes(own))) { await db.doc('inbox/' + id).delete(); continue; } }
       // 같은 결제가 카드사 앱과 삼성월렛에서 두 번 오면 하나만 남기기
       const tm = s2 => { const [h, mi] = (s2 || '00:00').split(':').map(Number); return h * 60 + mi; };
       const dup = p.amount && state.ledger.find(e => !e.cancelled && e.src === 'auto' && e.type === (p.type === 'cancel' ? 'in' : p.type) && +e.amount === p.amount && e.date === p.date && Math.abs(tm(e.time) - tm(p.time)) <= 5);
@@ -1450,10 +1461,10 @@ function parseMoneyLine(line){
 const MTABS = [['sum','요약'],['list','내역'],['inst','할부'],['fixed','고정지출'],['goal','목표·결제일']];
 const TYPE_KO = { out:'지출', in:'입금', save:'저축' };
 function pctTxt(a, b){ if (!b) return a ? '새로 생김' : ''; const p = Math.round((a - b) / b * 100); return p === 0 ? '같아요' : (p > 0 ? `▲ ${p}%` : `▼ ${-p}%`); }
-function barHtml(name, spent, goal, sub){
+function barHtml(name, spent, goal, sub, attr){
   const pct = goal ? spent / goal * 100 : 0;
   const cls = goal ? (pct >= 100 ? 'over' : pct >= 90 ? 'warn' : '') : 'nogoal';
-  return `<div class="bar ${cls}"><div class="top"><span>${esc(name)}</span><span>${won(spent)}${goal ? ` / ${won(goal)} <span class="pct">${Math.round(pct)}%</span>` : (sub ? ` <span class="help">${sub}</span>` : '')}</span></div>${goal ? `<div class="trk"><div class="fill" style="width:${Math.min(100, pct).toFixed(1)}%"></div></div>` : ''}${pct >= 100 ? `<div class="warnline">⚠ 목표보다 ${won(spent - goal)} 더 썼어요</div>` : pct >= 90 ? `<div class="warnline">목표까지 ${won(goal - spent)} 남았어요</div>` : ''}</div>`;
+  return `<${attr ? 'button' : 'div'} class="bar ${cls}${attr ? ' tap' : ''}" ${attr || ''}><div class="top"><span>${esc(name)}${attr ? ' <span class="go">›</span>' : ''}</span><span>${won(spent)}${goal ? ` / ${won(goal)} <span class="pct">${Math.round(pct)}%</span>` : (sub ? ` <span class="help">${sub}</span>` : '')}</span></div>${goal ? `<div class="trk"><div class="fill" style="width:${Math.min(100, pct).toFixed(1)}%"></div></div>` : ''}${pct >= 100 ? `<div class="warnline">⚠ 목표보다 ${won(spent - goal)} 더 썼어요</div>` : pct >= 90 ? `<div class="warnline">목표까지 ${won(goal - spent)} 남았어요</div>` : ''}</${attr ? 'button' : 'div'}>`;
 }
 function mrow(x, extra){
   const n = instOf(x);
@@ -1479,12 +1490,36 @@ function moneySum(){
   return `<div class="mstats four"><div><span>지출</span><b class="out">${won(out)}</b></div><div><span>입금</span><b class="in">${won(inn)}</b></div><div><span>저축</span><b class="save">${won(sav)}</b></div><div><span>남은 돈</span><b>${won(inn - out - sav)}</b></div></div>
     <div class="cmp">지난달보다 지출 <b class="${out > pout ? 'out' : 'in'}">${pctTxt(out, pout)}</b> <span class="help">(지난달 ${won(pout)})</span>${deltas.length ? `<div class="help">${deltas.map(x => `${esc(x.c)} ${x.d > 0 ? '+' : ''}${won(x.d)}`).join(' · ')}</div>` : ''}</div>
     <div class="btns" style="margin-bottom:12px">${state.readOnly ? '' : '<button class="primary" data-addmoney style="height:38px">+ 내역 추가</button>'}<button class="ghost" data-export>엑셀로 받기</button></div>
-    ${isNow && pays.length ? `<div class="sec" style="margin-top:0">카드 결제 예정</div><div class="bars">${pays.map(p => `<div class="bar nogoal"><div class="top"><span>${esc(p.c)} · ${p.d.getMonth()+1}/${p.d.getDate()} 결제</span><span><b>${won(p.bill.total)}</b> <span class="help">D-${Math.round((p.d - today0()) / 864e5)}</span></span></div><div class="help">${p.bill.start.getMonth()+1}/${p.bill.start.getDate()}~${p.bill.end.getMonth()+1}/${p.bill.end.getDate()} 사용분${p.bill.inst ? ` · 할부 ${won(p.bill.inst)} 포함` : ''}</div></div>`).join('')}</div>` : ''}
-    ${isNow ? `<div class="sec">다음 달(${+plan.nm.slice(5)}월) 나갈 돈</div><div class="bars"><div class="bar nogoal"><div class="top"><span>할부</span><span>${won(plan.inst)} <span class="help">${plan.instList.length}건</span></span></div></div><div class="bar nogoal"><div class="top"><span>고정지출</span><span>${won(plan.fixed)} <span class="help">${plan.fx.length}건</span></span></div></div>${plan.saves ? `<div class="bar nogoal"><div class="top"><span>정기 저축</span><span>${won(plan.saves)}</span></div></div>` : ''}<div class="bar nogoal"><div class="top"><span>합계</span><span><b>${won(plan.total + plan.saves)}</b></span></div><div class="help">이미 정해진 금액만 더했어요. 새로 쓰는 돈은 빠져 있어요.</div></div></div>` : ''}
+    ${isNow && pays.length ? `<div class="sec" style="margin-top:0">카드 결제 예정</div><div class="bars">${pays.map(p => `<div class="bar nogoal tap" data-mdetail="bill|${esc(p.c)}" role="button" tabindex="0"><div class="top"><span>${esc(p.c)} · ${p.d.getMonth()+1}/${p.d.getDate()} 결제</span><span><b>${won(p.bill.total)}</b> <span class="help">D-${Math.round((p.d - today0()) / 864e5)}</span></span></div><div class="help">${p.bill.start.getMonth()+1}/${p.bill.start.getDate()}~${p.bill.end.getMonth()+1}/${p.bill.end.getDate()} 사용분${p.bill.inst ? ` · 할부 ${won(p.bill.inst)} 포함` : ''}</div></div>`).join('')}</div>` : ''}
+    ${isNow ? `<div class="sec">다음 달(${+plan.nm.slice(5)}월) 나갈 돈</div><div class="bars"><div class="bar nogoal tap" data-mtab="inst" role="button" tabindex="0"><div class="top"><span>할부 <span class="go">›</span></span><span>${won(plan.inst)} <span class="help">${plan.instList.length}건</span></span></div></div><div class="bar nogoal tap" data-mtab="fixed" role="button" tabindex="0"><div class="top"><span>고정지출 <span class="go">›</span></span><span>${won(plan.fixed)} <span class="help">${plan.fx.length}건</span></span></div></div>${plan.saves ? `<div class="bar nogoal tap" data-mtab="fixed" role="button" tabindex="0"><div class="top"><span>정기 저축 <span class="go">›</span></span><span>${won(plan.saves)}</span></div></div>` : ''}<div class="bar nogoal"><div class="top"><span>합계</span><span><b>${won(plan.total + plan.saves)}</b></span></div><div class="help">이미 정해진 금액만 더했어요. 새로 쓰는 돈은 빠져 있어요.</div></div></div>` : ''}
     <div class="sec">카드별 사용 <span class="help">(할부는 이번 달 몫만)</span></div>
-    ${cards.length ? `<div class="bars">${cards.map(c => barHtml(c, sp[c] || 0, +b.cards[c] || 0, '목표 없음')).join('')}</div>` : '<div class="empty" style="padding:0 0 4px">이번 달 카드 사용 내역이 없어요.</div>'}
-    ${cats.length ? `<div class="sec">카테고리별 지출</div><div class="bars">${cats.map(c => barHtml(c, cs[c] || 0, +b.cats[c] || 0, out ? Math.round((cs[c] || 0) / out * 100) + '%' : '')).join('')}</div>` : ''}
+    ${cards.length ? `<div class="bars">${cards.map(c => barHtml(c, sp[c] || 0, +b.cards[c] || 0, '목표 없음', `data-mdetail="card|${esc(c)}"`)).join('')}</div>` : '<div class="empty" style="padding:0 0 4px">이번 달 카드 사용 내역이 없어요.</div>'}
+    ${cats.length ? `<div class="sec">카테고리별 지출</div><div class="bars">${cats.map(c => barHtml(c, cs[c] || 0, +b.cats[c] || 0, out ? Math.round((cs[c] || 0) / out * 100) + '%' : '', `data-mdetail="cat|${esc(c)}"`)).join('')}</div>` : ''}
     ${b.saves.length ? `<div class="sec">저축 목표</div><div class="bars">${b.saves.map(g => { const sum = state.ledger.filter(x => x.type === 'save' && x.goal === g.id && !x.cancelled).reduce((s, x) => s + (+x.amount || 0), 0); return barHtml(g.name, sum, +g.target || 0, ''); }).join('').replace(/class="bar (warn|over)"/g, 'class="bar ok"')}</div>` : ''}`;
+}
+function detailSheet(spec){
+  const k = spec.indexOf('|'), kind = spec.slice(0, k), name = spec.slice(k + 1);
+  const mk = monthKey(state.cursor);
+  let items, title, sub = '';
+  if (kind === 'bill') {
+    const d = nextPayDate(name), b = billFor(name, d); items = b.items;
+    title = `${name} ${d.getMonth()+1}/${d.getDate()} 결제 예정`;
+    sub = `${b.start.getMonth()+1}/${b.start.getDate()}~${b.end.getMonth()+1}/${b.end.getDate()} 사용분${b.inst ? ` · 할부 ${won(b.inst)} 포함` : ''}`;
+  } else {
+    items = chargesFor(mk).filter(c => kind === 'cat' ? (c.x.cat || '기타') === name : (c.x.card || '기타') === name);
+    title = `${+mk.slice(5)}월 ${name}`; sub = '할부는 이번 달 몫만 더했어요';
+  }
+  items.sort((a, b) => ((b.x.date || '') + (b.x.time || '')).localeCompare((a.x.date || '') + (a.x.time || '')));
+  const total = items.reduce((s2, c) => s2 + c.amt, 0);
+  const goal = kind === 'cat' ? +B().cats[name] || 0 : kind === 'card' ? +B().cards[name] || 0 : 0;
+  const by = {}; items.forEach(c => { const g = kind === 'cat' ? (c.x.card || '기타') : (c.x.cat || '기타'); by[g] = (by[g] || 0) + c.amt; });
+  const brk = Object.entries(by).sort((a, b) => b[1] - a[1]);
+  const row = c => { const x = c.x, d = fromYmd(x.date); return `<button class="mrow ${x.cancelled ? 'cx' : ''}" data-money="${esc(x.id)}"><span class="tm">${d.getMonth()+1}/${d.getDate()}</span><span class="mm"><b>${esc(x.merchant || '')}</b><span class="tags">${kind !== 'card' && kind !== 'bill' ? `<span class="chipx">${esc(x.card || '')}</span>` : ''}${kind !== 'cat' ? `<span class="chipx">${esc(x.cat || '')}</span>` : ''}${c.n ? `<span class="chipx inst">할부 ${c.k}/${c.n}회</span>` : ''}${x.memo && !c.n && !/할부|일시불/.test(x.memo) ? `<span>${esc(x.memo)}</span>` : ''}</span></span><span class="amt out">-${won(c.amt)}</span></button>`; };
+  openSheet(`<div class="sh"><h3>${esc(title)}</h3><button class="ghost" data-close>닫기</button></div>
+    <div class="mstats"><div><span>합계</span><b class="out">${won(total)}</b></div><div><span>건수</span><b>${items.length}건</b></div><div><span>${goal ? '목표 대비' : '할부'}</span><b>${goal ? Math.round(total / goal * 100) + '%' : won(items.filter(c => c.n).reduce((s2, c) => s2 + c.amt, 0))}</b></div></div>
+    <p class="help" style="margin:0">${esc(sub)}</p>
+    ${brk.length > 1 ? `<div class="bars">${brk.map(([g, v]) => `<div class="bar nogoal"><div class="top"><span>${esc(g)}</span><span>${won(v)} <span class="help">${Math.round(v / total * 100)}%</span></span></div><div class="trk"><div class="fill" style="width:${(v / brk[0][1] * 100).toFixed(1)}%;background:var(--c-elder)"></div></div></div>`).join('')}</div>` : ''}
+    ${items.length ? `<div class="dcard"><div class="items">${items.map(row).join('')}</div></div>` : '<div class="empty" style="padding:0">내역이 없어요.</div>'}`);
 }
 function moneyList(){
   const mk = monthKey(state.cursor);
@@ -2006,7 +2041,7 @@ window.addEventListener('scroll', closePop, { passive:true });
 window.addEventListener('resize', closePop);
 document.addEventListener('click', ev => {
   if (!ev.target.closest('#pop') && !ev.target.closest('[data-people]')) closePop();
-  const t = ev.target.closest('button'); if (!t) { if (ev.target.id === 'scrim') closeSheet(); return; }
+  const t = ev.target.closest('button, [data-mdetail], [data-mtab]'); if (!t) { if (ev.target.id === 'scrim') closeSheet(); return; }
   if (t.dataset.view) { navTo(t.dataset.view); return; }
   if (t.hasAttribute('data-back')) { goBack(); return; }
   if (t.dataset.addev) { editEvent(null, t.dataset.addev); return; }
@@ -2028,7 +2063,8 @@ document.addEventListener('click', ev => {
   if (t.dataset.money) { editMoney(t.dataset.money); return; }
   if (t.hasAttribute('data-addmoney')) { editMoney(null); return; }
   if (t.hasAttribute('data-budget')) { budgetSheet(); return; }
-  if (t.dataset.mtab) { state.mtab = t.dataset.mtab; renderView(); return; }
+  if (t.dataset.mtab) { state.mtab = t.dataset.mtab; renderView(); window.scrollTo(0, 0); return; }
+  if (t.dataset.mdetail) { detailSheet(t.dataset.mdetail); return; }
   if (t.hasAttribute('data-addfixed')) { editFixed(null); return; }
   if (t.dataset.fixed) { editFixed(t.dataset.fixed); return; }
   if (t.hasAttribute('data-catgoal')) { catGoalSheet(); return; }
