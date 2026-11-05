@@ -1339,7 +1339,7 @@ function parseNotice(app, title, text, at, bk){
 function addMonths(mk, n){ const [y, m] = mk.split('-').map(Number); return monthKey(new Date(y, m - 1 + n, 1)); }
 function mdiff(a, b){ const [ya, ma] = a.split('-').map(Number), [yb, mb] = b.split('-').map(Number); return (yb - ya) * 12 + (mb - ma); }
 function instOf(x){ const n = +x.inst || 0; return n > 1 ? n : 0; }
-function portion(x, k){ const n = instOf(x), a = +x.amount || 0; if (!n) return a; if (+x.monthly) return +x.monthly; const base = Math.floor(a / n / 10) * 10; return k === n ? a - base * (n - 1) : base; }
+function portion(x, k){ const n = instOf(x), a = +x.amount || 0; if (!n) return a; if (+x.first && k === 1) return +x.first; if (+x.monthly) return +x.monthly; if (+x.first) return Math.round((a - x.first) / (n - 1)); const base = Math.floor(a / n / 10) * 10; return k === n ? a - base * (n - 1) : base; }
 function instStartMk(x){ return /^\d{4}-\d{2}$/.test(x.instStart || '') ? x.instStart : (x.date || '').slice(0, 7); }
 function spendOf(x){ return x.type === 'out' && !x.cancelled ? (+x.amount || 0) : 0; }
 function chargesFor(mk){
@@ -1456,10 +1456,13 @@ async function processInbox(docs, bk){
           .sort((a, b) => ((b.date || '') + (b.time || '')).localeCompare((a.date || '') + (a.time || '')))[0];
         if (hit) { await db.doc(P('ledger/' + hit.id)).update({ cancelled:true, cancelRaw:p.raw }); await db.doc(P('inbox/' + id)).delete(); continue; }
       }
-      const type = p.type === 'cancel' ? 'in' : p.type;
-      const merchant = (p.type === 'cancel' ? '취소 ' : '') + (p.merchant || (type === 'in' ? '입금' : '가맹점 확인 필요'));
+      let type = p.type === 'cancel' ? 'in' : p.type;
+      let merchant = (p.type === 'cancel' ? '취소 ' : '') + (p.merchant || (type === 'in' ? '입금' : '가맹점 확인 필요'));
+      // 적금처럼 '저축' 고정지출과 맞는 출금은 저축으로 기록
+      const sv = type === 'out' && (books[bk].fixed || []).find(f => f.type === 'save' && f.match && p.raw.includes(f.match));
+      if (sv) { type = 'save'; merchant = sv.name; }
       await db.doc(P('ledger/' + id)).set({ date:p.date, time:p.time, amount:p.amount || 0, type, merchant, card:p.card || '기타', who:bk === 'mine' ? (state.myWho || 'me') : 'hus',
-        cat: p.type === 'cancel' ? '기타' : inBook(bk, () => guessCat(p.merchant, type)), memo:p.installment, inst:p.inst || 0, src:'auto', raw:p.raw, review:!p.amount, cancelled:false, at:Date.now(), by:'system' });
+        cat: sv ? '저축' : p.type === 'cancel' ? '기타' : inBook(bk, () => guessCat(p.merchant, type)), memo:p.installment, inst:p.inst || 0, src:'auto', raw:p.raw, review:!p.amount, cancelled:false, at:Date.now(), by:'system', ...(sv ? { fixedId:sv.id } : {}) });
       await db.doc(P('inbox/' + id)).delete();
     }
   } catch(e){}
