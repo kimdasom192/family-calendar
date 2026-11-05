@@ -1025,8 +1025,10 @@ async function importData(file){
   (j.notices||[]).forEach(n => { const { id, ...d } = n; writes.push(['notices/' + id, d]); });
   const bk = j.book === 'mine' ? 'mine' : 'fam', bb = books[bk];
   if (bk === 'mine' && !me) throw new Error('로그인한 뒤 가져와 주세요');
-  if (Array.isArray(j.fixed) && j.fixed.length) { const have = new Set((bb.fixed || []).map(f => f.id)); writes.push([bp('config/fixed', bk), { items:(bb.fixed || []).concat(j.fixed.filter(f => !have.has(f.id))), at:Date.now() }]); }
-  (j.ledger||[]).forEach(x => { const { id, ...d } = x; writes.push([bp('ledger/' + (id || ('imp' + Math.random().toString(36).slice(2, 12))), bk), { src:'import', cancelled:false, review:false, at:Date.now(), ...d }]); });
+  if (Array.isArray(j.fixed) && j.fixed.length) { const nw = new Set(j.fixed.map(f => f.id)); writes.push([bp('config/fixed', bk), { items:(bb.fixed || []).filter(f => !nw.has(f.id)).concat(j.fixed), at:Date.now() }]); }
+  (j.ledger||[]).forEach(x => { const { id, dedupe, ...d } = x;
+    // 알림으로 이미 들어온 같은 내역(같은 날·통장·금액)은 건너뛰기
+    if (dedupe && (bb.ledger || []).some(e => e.id !== id && !e.cancelled && e.card === d.card && e.type === d.type && +e.amount === +d.amount && e.date === d.date)) return; writes.push([bp('ledger/' + (id || ('imp' + Math.random().toString(36).slice(2, 12))), bk), { src:'import', cancelled:false, review:false, at:Date.now(), ...d }]); });
   if (j.pay && typeof j.pay === 'object') { const cur = bb.budget || {}; writes.push([bp('config/budget', bk), { cards:cur.cards || {}, cats:cur.cats || {}, saves:cur.saves || [], pay:{ ...(cur.pay || {}), ...j.pay }, at:Date.now() }]); }
   if (j.balances && typeof j.balances === 'object') writes.push([bp('config/balances', bk), { ...(bb.balances || {}), ...j.balances }]);
   if (j.config) writes.push(['config/main', j.config]);
