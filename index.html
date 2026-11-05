@@ -91,6 +91,9 @@ header{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var
 .bookbar button{border:0;background:none;padding:10px 6px;font-size:14px;font-weight:600;color:var(--muted)}
 .bookbar button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
 .dcard.today{margin-bottom:12px}
+.mstats .tap{cursor:pointer}
+.mstats .tap:hover{background:var(--surface2)}
+.warnx{color:var(--danger, #c0392b);font-weight:600}
 .bookhelp{margin:-2px 0 10px}
 .mstats.inst3{grid-template-columns:1.12fr 1.12fr .76fr}
 .mstats.four{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -387,7 +390,7 @@ const state = {
   readOnly:false, drafts:[], loaded:false, notices:[], noticeAll:false, annivs:[]
 };
 /* 가계부 두 권: fam = 가족 공유, mine = 나만 보는 가계부 (private/<uid>/...) */
-const books = { fam:{ ledger:[], budget:{}, fixed:[], catmap:{} }, mine:{ ledger:[], budget:{}, fixed:[], catmap:{} } };
+const books = { fam:{ ledger:[], budget:{}, fixed:[], catmap:{}, balances:{} }, mine:{ ledger:[], budget:{}, fixed:[], catmap:{}, balances:{} } };
 const logs = { fam:[], mine:[] };
 state.book = 'fam';
 ['ledger','budget','fixed','catmap'].forEach(k => Object.defineProperty(state, k, { get(){ return books[state.book][k]; }, set(v){ books[state.book][k] = v; }, configurable:true }));
@@ -905,7 +908,7 @@ function makeDb(F, fs){
   const docRef = path => { const ref = F.doc(fs, path); return {
     id:ref.id, path,
     get: async () => wrapDocSnap(await F.getDoc(ref)),
-    set: d => F.setDoc(ref, d), update: d => F.updateDoc(ref, d), delete: () => F.deleteDoc(ref),
+    set: (d, o) => o ? F.setDoc(ref, d, o) : F.setDoc(ref, d), update: d => F.updateDoc(ref, d), delete: () => F.deleteDoc(ref),
     onSnapshot: (next, err) => F.onSnapshot(ref, { includeMetadataChanges:true }, x => next(wrapDocSnap(x)), e => err && err({ code:mapCode(e.code), message:e.message })),
     collection: p => colRef(path + '/' + p)
   }; };
@@ -1025,6 +1028,7 @@ async function importData(file){
   if (Array.isArray(j.fixed) && j.fixed.length) { const have = new Set((bb.fixed || []).map(f => f.id)); writes.push([bp('config/fixed', bk), { items:(bb.fixed || []).concat(j.fixed.filter(f => !have.has(f.id))), at:Date.now() }]); }
   (j.ledger||[]).forEach(x => { const { id, ...d } = x; writes.push([bp('ledger/' + (id || ('imp' + Math.random().toString(36).slice(2, 12))), bk), { src:'import', cancelled:false, review:false, at:Date.now(), ...d }]); });
   if (j.pay && typeof j.pay === 'object') { const cur = bb.budget || {}; writes.push([bp('config/budget', bk), { cards:cur.cards || {}, cats:cur.cats || {}, saves:cur.saves || [], pay:{ ...(cur.pay || {}), ...j.pay }, at:Date.now() }]); }
+  if (j.balances && typeof j.balances === 'object') writes.push([bp('config/balances', bk), { ...(bb.balances || {}), ...j.balances }]);
   if (j.config) writes.push(['config/main', j.config]);
   for (let i = 0; i < writes.length; i += 400) {
     const b = F.writeBatch(fs);
@@ -1086,6 +1090,7 @@ async function boot(){
   db.doc('config/budget').onSnapshot(s => { books.fam.budget = s.exists ? s.data() : {}; if (showing('fam') && state.view === 'money') renderView(); renderNotices(); }, onErr);
   db.doc('config/fixed').onSnapshot(s => { books.fam.fixed = (s.exists && s.data().items) || []; if (showing('fam') && state.view === 'money') renderView(); if (!s.metadata.fromCache) scheduleBudgetCheck(); }, onErr);
   db.doc('config/catmap').onSnapshot(s => { books.fam.catmap = (s.exists && s.data().map) || {}; }, onErr);
+  db.doc('config/balances').onSnapshot(s => { books.fam.balances = s.exists ? s.data() : {}; if (showing('fam') && state.view === 'money') renderView(); }, onErr);
   db.collection('inbox').onSnapshot(s => { if (!s.metadata.fromCache && s.docs.length) processInbox(s.docs, 'fam'); }, onErr);
   const mergeLog = () => { state.log = logs.fam.concat(logs.mine); renderBell(); };
   db.collection('log').onSnapshot(s => { logs.fam = s.docs.map(d => ({ id:d.id, ...d.data() })); mergeLog(); }, onErr);
@@ -1097,6 +1102,7 @@ async function boot(){
     db.doc(P + 'config/budget').onSnapshot(s => { books.mine.budget = s.exists ? s.data() : {}; if (showing('mine') && state.view === 'money') renderView(); }, pErr);
     db.doc(P + 'config/fixed').onSnapshot(s => { books.mine.fixed = (s.exists && s.data().items) || []; if (showing('mine') && state.view === 'money') renderView(); if (!s.metadata.fromCache) scheduleBudgetCheck(); }, pErr);
     db.doc(P + 'config/catmap').onSnapshot(s => { books.mine.catmap = (s.exists && s.data().map) || {}; }, pErr);
+    db.doc(P + 'config/balances').onSnapshot(s => { books.mine.balances = s.exists ? s.data() : {}; if (showing('mine') && state.view === 'money') renderView(); }, pErr);
     db.doc(P + 'config/lastInbox').onSnapshot(s => { books.mine.lastInbox = s.exists ? s.data() : null; if (showing('mine') && state.view === 'money') renderView(); }, pErr);
     db.collection(P + 'inbox').onSnapshot(s => { if (!s.metadata.fromCache && s.docs.length) processInbox(s.docs, 'mine'); }, pErr);
     db.collection(P + 'log').onSnapshot(s => { logs.mine = s.docs.map(d => ({ id:d.id, _p:1, ...d.data() })); mergeLog(); }, pErr);
@@ -1333,7 +1339,9 @@ function parseNotice(app, title, text, at, bk){
   const cand = raw.split(/\n|\s\/\s/).map(l => { let x = l; STRIP.forEach(re => { x = x.replace(re, ' '); }); return x.replace(/\s+/g, ' ').trim(); }).filter(x => x.length >= 2);
   let merchant = cand.length ? cand.sort((a, b) => b.length - a.length)[0] : '';
   if (merchant.length > 30) merchant = merchant.slice(0, 30);
-  return { card, type, amount, date, time, merchant, installment, inst: inst ? +inst : 0, raw };
+  const bm = raw.match(/잔액\s*[:：]?\s*[₩￦]?\s*(-?[0-9][0-9,]*)\s*원?/);
+  const balance = bm ? +bm[1].replace(/,/g, '') : null;
+  return { card, type, amount, date, time, merchant, installment, inst: inst ? +inst : 0, raw, balance };
 }
 /* 월 계산: 할부는 결제한 달부터 매달 나눠서 */
 function addMonths(mk, n){ const [y, m] = mk.split('-').map(Number); return monthKey(new Date(y, m - 1 + n, 1)); }
@@ -1437,6 +1445,7 @@ async function processInbox(docs, bk){
       try { await db.doc(P('config/lastInbox')).set({ at:Date.now(), app:String(x.app || '').slice(0, 40), text:String(x.text || '').slice(0, 80) }); } catch(e){}
       const unbrace = v => String(v || '').trim().replace(/^\{+/, '').replace(/\}+$/, '');
       const p = parseNotice(unbrace(x.app), x.title, unbrace(x.text), x.at, bk);
+      if (p.balance != null && p.card && p.card !== '현금' && isAcct(p.card, bk)) { const cur = (books[bk].balances || {})[p.card]; const at = x.at || Date.now(); if (!cur || !(cur.at > at)) { try { await db.doc(P('config/balances')).set({ [p.card]:{ bal:p.balance, at, src:'auto' } }, { merge:true }); } catch(e){} } }
       // 광고·안내처럼 금액도 결제 말도 없는 알림은 버리기
       if (!p.amount && !/[가-힣A-Za-z0-9]/.test((p.raw || '').replace(/\{[^{}]*\}|lv=t|not_\w+|notification|[{}|\/]/g, ''))) { await db.doc(P('inbox/' + id)).delete(); await db.collection(P('log')).add({ act:'alert', type:'budget', lv:0, ref:'', date:'', changes:[bk === 'mine' ? '내 휴대폰에서 보낸 시험 알림이 잘 도착했어요.' : '진우 님 휴대폰에서 보낸 시험 알림이 잘 도착했어요.'], title:'📱 카드 알림 연결 확인', at:Date.now(), by:'system' }); continue; }
       if (!p.amount && !/(승인|결제|입금|출금|취소|이체|사용)/.test(p.raw)) { await db.doc(P('inbox/' + id)).delete(); continue; }
@@ -1550,6 +1559,83 @@ function moneyView(){
   const body = tab === 'list' ? moneyList() : tab === 'inst' ? moneyInst() : tab === 'fixed' ? moneyFixed() : tab === 'goal' ? moneyGoal() : moneySum();
   return tabs + body;
 }
+function balanceHtml(){
+  const accts = BOOKACCTS[state.book].filter(c => c !== '현금');
+  const bal = state.book === 'mine' ? books.mine.balances : books.fam.balances;
+  const t = today0(), mk = monthKey(t), st = fixedStatus(mk);
+  const rows = accts.map(c => {
+    const b = (bal || {})[c];
+    const due = st.filter(s => !s.paid && (s.f.card || mainAcct()) === c && (+s.f.day || 1) >= t.getDate() && (s.f.type || 'out') !== 'in').reduce((a, s) => a + (+s.f.amount || 0), 0);
+    if (!b) return `<button class="mrow" data-acct="${esc(c)}"><span class="tm">🏦</span><span class="mm"><b>${esc(c)} <span class="go">›</span></b><span class="tags"><span>잔액을 눌러서 입력해 주세요</span>${due ? `<span>이번 달 남은 자동이체 ${won(due)}</span>` : ''}</span></span><span class="amt">-</span></button>`;
+    // 잔액 기준 시각 이후 직접 적은 내역은 반영해서 예상 잔액으로
+    const after = state.ledger.filter(x => x.card === c && !x.cancelled && x.src !== 'auto' && x.src !== 'import' && (x.at || 0) > b.at);
+    const delta = after.reduce((a, x) => a + (x.type === 'in' ? 1 : -1) * (+x.amount || 0), 0);
+    const now = (+b.bal || 0) + delta, short = due - now;
+    const when = new Date(b.at).toLocaleString('ko-KR', { month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' });
+    return `<button class="mrow" data-acct="${esc(c)}"><span class="tm">🏦</span><span class="mm"><b>${esc(c)} <span class="go">›</span></b><span class="tags"><span>${esc(when)} ${b.src === 'auto' ? '알림' : '입력'} 기준${delta ? ` · 이후 직접 적은 ${after.length}건 반영` : ''}</span>${due ? `<span class="${short > 0 ? 'warnx' : ''}">이번 달 남은 자동이체 ${won(due)}${short > 0 ? ` · ${won(short)} 모자라요` : ''}</span>` : ''}</span></span><span class="amt ${now < 0 ? 'out' : ''}">${won(now)}</span></button>`;
+  }).join('');
+  const total = accts.reduce((a, c) => a + (+((bal || {})[c] || {}).bal || 0), 0);
+  return `<div class="sec" style="margin-top:0">통장 잔액 ${total ? `<span class="help">합계 ${won(total)}</span>` : ''}</div><div class="dcard" style="margin-bottom:12px"><div class="items">${rows}</div></div>`;
+}
+function acctNow(c){
+  const b = (state.book === 'mine' ? books.mine.balances : books.fam.balances || {})[c];
+  if (!b) return null;
+  const after = state.ledger.filter(x => x.card === c && !x.cancelled && x.src !== 'auto' && x.src !== 'import' && (x.at || 0) > b.at);
+  return { b, now:(+b.bal || 0) + after.reduce((a, x) => a + (x.type === 'in' ? 1 : -1) * (+x.amount || 0), 0), after };
+}
+function acctSheet(c){
+  const mk = monthKey(state.cursor), t = today0(), isNow = mk === monthKey(t);
+  const a = acctNow(c);
+  const list = state.ledger.filter(x => x.card === c && (x.date || '').startsWith(mk)).sort((p, q) => ((q.date || '') + (q.time || '')).localeCompare((p.date || '') + (p.time || '')));
+  const sum = ty => list.filter(x => x.type === ty && !x.cancelled).reduce((s2, x) => s2 + (+x.amount || 0), 0);
+  const due = isNow ? fixedStatus(mk).filter(s => (s.f.card || mainAcct()) === c && (s.f.type || 'out') !== 'in') : [];
+  const left = due.filter(s => !s.paid && (+s.f.day || 1) >= t.getDate());
+  const leftSum = left.reduce((s2, x) => s2 + (+x.f.amount || 0), 0);
+  const when = a ? new Date(a.b.at).toLocaleString('ko-KR', { month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
+  openSheet(`<div class="sh"><h3>🏦 ${esc(c)}</h3><button class="ghost" data-close>닫기</button></div>
+    <div class="mstats"><div><span>지금 잔액</span><b>${a ? won(a.now) : '-'}</b></div><div><span>${+mk.slice(5)}월 들어온 돈</span><b class="in">${won(sum('in'))}</b></div><div><span>${+mk.slice(5)}월 나간 돈</span><b class="out">${won(sum('out') + sum('save'))}</b></div></div>
+    <p class="help" style="margin:0">${a ? `${esc(when)} ${a.b.src === 'auto' ? '은행 알림' : '직접 입력'} 기준${a.after.length ? ` · 이후 직접 적은 ${a.after.length}건 반영` : ''}` : '아직 잔액이 없어요. 아래 버튼으로 입력해 주세요.'}</p>
+    ${state.readOnly ? '' : `<div class="btns" style="margin:0"><button class="ghost" data-balance="${esc(c)}" style="height:36px">잔액 ${a ? '고치기' : '입력하기'}</button></div>`}
+    ${left.length ? `<div class="sec">이번 달 남은 자동이체 <span class="help">${won(leftSum)}${a && leftSum > a.now ? ` · <span class="warnx">${won(leftSum - a.now)} 모자라요</span>` : ''}</span></div><div class="dcard"><div class="items">${left.sort((p, q) => (+p.f.day || 1) - (+q.f.day || 1)).map(s => `<div class="mrow"><span class="tm">${+s.f.day || 1}일</span><span class="mm"><b>${esc(s.f.name)}</b><span class="tags"><span class="chipx">${esc(s.f.type === 'save' ? '저축' : (s.f.cat || ''))}</span></span></span><span class="amt ${s.f.type === 'save' ? 'save' : 'out'}">${s.f.type === 'save' ? '' : '-'}${won(+s.f.amount || 0)}</span></div>`).join('')}</div></div>` : ''}
+    <div class="sec">${+mk.slice(5)}월 거래 ${list.length}건</div>
+    ${list.length ? `<div class="dcard"><div class="items">${list.map(x => mrow(x, `<span>${+x.date.slice(5, 7)}/${+x.date.slice(8)}</span>`)).join('')}</div></div>` : '<div class="empty" style="padding:0">이번 달 기록된 거래가 없어요.</div>'}`);
+}
+function flowSheet(kind){
+  const mk = monthKey(state.cursor), m = +mk.slice(5);
+  if (kind === 'left') {
+    const out = monthOut(mk), inn = monthIn(mk), sav = monthSave(mk);
+    openSheet(`<div class="sh"><h3>${m}월 남은 돈</h3><button class="ghost" data-close>닫기</button></div>
+      <div class="bars">
+        <div class="bar nogoal tap" data-mdetail="flow|in" role="button" tabindex="0"><div class="top"><span>들어온 돈 <span class="go">›</span></span><span class="in">+${won(inn)}</span></div></div>
+        <div class="bar nogoal tap" data-mdetail="flow|out" role="button" tabindex="0"><div class="top"><span>쓴 돈 <span class="go">›</span></span><span class="out">-${won(out)}</span></div></div>
+        <div class="bar nogoal tap" data-mdetail="flow|save" role="button" tabindex="0"><div class="top"><span>저축 <span class="go">›</span></span><span class="save">-${won(sav)}</span></div></div>
+        <div class="bar nogoal"><div class="top"><b>남은 돈</b><b>${won(inn - out - sav)}</b></div></div>
+      </div>
+      <p class="help">들어온 돈에서 쓴 돈과 저축을 뺀 금액이에요. 내 계좌끼리 옮긴 돈과 카드값 출금은 빠져 있어요.</p>`);
+    return;
+  }
+  if (kind === 'out') { detailSheet('all|지출'); return; }
+  const items = state.ledger.filter(x => x.type === kind && !x.cancelled && (x.date || '').startsWith(mk)).sort((p, q) => ((q.date || '') + (q.time || '')).localeCompare((p.date || '') + (p.time || '')));
+  const total = items.reduce((s2, x) => s2 + (+x.amount || 0), 0);
+  const by = {}; items.forEach(x => { const g = kind === 'save' ? (x.merchant || '저축') : (x.card || '기타'); by[g] = (by[g] || 0) + (+x.amount || 0); });
+  const brk = Object.entries(by).sort((a, b) => b[1] - a[1]);
+  openSheet(`<div class="sh"><h3>${m}월 ${kind === 'in' ? '입금' : '저축'}</h3><button class="ghost" data-close>닫기</button></div>
+    <div class="mstats"><div><span>합계</span><b class="${kind}">${won(total)}</b></div><div><span>건수</span><b>${items.length}건</b></div><div><span>지난달</span><b>${won(kind === 'in' ? monthIn(addMonths(mk, -1)) : monthSave(addMonths(mk, -1)))}</b></div></div>
+    ${brk.length > 1 ? `<div class="bars">${brk.map(([g, v]) => `<div class="bar nogoal"><div class="top"><span>${esc(g)}</span><span>${won(v)} <span class="help">${Math.round(v / total * 100)}%</span></span></div><div class="trk"><div class="fill" style="width:${(v / brk[0][1] * 100).toFixed(1)}%;background:var(--c-elder)"></div></div></div>`).join('')}</div>` : ''}
+    ${items.length ? `<div class="dcard"><div class="items">${items.map(x => mrow(x, `<span>${+x.date.slice(5, 7)}/${+x.date.slice(8)}</span>`)).join('')}</div></div>` : '<div class="empty" style="padding:0">내역이 없어요.</div>'}`);
+}
+function balanceSheet(c){
+  const bk = state.book, b = (books[bk].balances || {})[c];
+  openSheet(`<div class="sh"><h3>${esc(c)} 잔액</h3>
+    <p class="help" style="margin:0 0 10px">은행 앱에 보이는 지금 잔액을 적어 주세요. 은행 알림에 잔액이 찍혀 오면 그때마다 자동으로 바뀌어요.</p>
+    <div class="fld"><label for="bal_v">지금 잔액 (원)</label><input id="bal_v" type="text" inputmode="numeric" value="${b ? (+b.bal).toLocaleString('ko-KR') : ''}" placeholder="예: 1,234,567"></div>
+    <div class="btns"><button class="ghost" data-close>취소</button><button class="primary" id="bal_save">저장</button></div></div>`);
+  $('#bal_save').onclick = async () => {
+    const v = +String($('#bal_v').value || '').replace(/[^0-9-]/g, '');
+    if (!$('#bal_v').value.trim()) return;
+    try { await db.doc(bp('config/balances', bk)).set({ [c]:{ bal:v, at:Date.now(), src:'manual' } }, { merge:true }); closeSheet(); toast('잔액을 저장했어요'); } catch(e){ toast('저장하지 못했어요'); }
+  };
+}
 function moneySum(){
   const mk = monthKey(state.cursor), pmk = addMonths(mk, -1);
   const out = monthOut(mk), inn = monthIn(mk), sav = monthSave(mk), pout = monthOut(pmk);
@@ -1564,9 +1650,10 @@ function moneySum(){
   const td = ymd(today0()), tdl = isNow ? state.ledger.filter(x => x.date === td).sort((a, c) => tkey(c).localeCompare(tkey(a))) : [];
   const tdOut = tdl.filter(x => x.type === 'out' && !x.cancelled).reduce((s2, x) => s2 + (+x.amount || 0), 0);
   const today = isNow ? `<section class="dcard today"><div class="dhead"><span class="d">오늘 · ${dLabel(td)}</span><span class="t">${tdl.length ? `${tdOut ? '결제 ' + won(tdOut) + ' · ' : ''}${tdl.length}건` : ''}</span></div>${tdl.length ? `<div class="items">${tdl.map(x => mrow(x)).join('')}</div>` : '<div class="empty" style="padding:12px 14px">오늘은 아직 쓴 돈이 없어요.</div>'}</section>` : '';
-  return today + `<div class="mstats four"><div><span>지출</span><b class="out">${won(out)}</b></div><div><span>입금</span><b class="in">${won(inn)}</b></div><div><span>저축</span><b class="save">${won(sav)}</b></div><div><span>남은 돈</span><b>${won(inn - out - sav)}</b></div></div>
+  return today + `<div class="mstats four"><div class="tap" data-mdetail="flow|out" role="button" tabindex="0"><span>지출 ›</span><b class="out">${won(out)}</b></div><div class="tap" data-mdetail="flow|in" role="button" tabindex="0"><span>입금 ›</span><b class="in">${won(inn)}</b></div><div class="tap" data-mdetail="flow|save" role="button" tabindex="0"><span>저축 ›</span><b class="save">${won(sav)}</b></div><div class="tap" data-mdetail="flow|left" role="button" tabindex="0"><span>남은 돈 ›</span><b>${won(inn - out - sav)}</b></div></div>
     <div class="cmp">지난달보다 지출 <b class="${out > pout ? 'out' : 'in'}">${pctTxt(out, pout)}</b> <span class="help">(지난달 ${won(pout)})</span>${deltas.length ? `<div class="help">${deltas.map(x => `${esc(x.c)} ${x.d > 0 ? '+' : ''}${won(x.d)}`).join(' · ')}</div>` : ''}</div>
     <div class="btns" style="margin-bottom:12px">${state.readOnly ? '' : '<button class="primary" data-addmoney style="height:38px">+ 내역 추가</button>'}<button class="ghost" data-export>엑셀로 받기</button></div>
+    ${isNow ? balanceHtml() : ''}
     ${isNow && pays.length ? `<div class="sec" style="margin-top:0">카드 결제 예정</div><div class="bars">${pays.map(p => `<div class="bar nogoal tap" data-mdetail="bill|${esc(p.c)}" role="button" tabindex="0"><div class="top"><span>${esc(p.c)} · ${p.d.getMonth()+1}/${p.d.getDate()} 결제</span><span><b>${won(p.bill.total)}</b> <span class="help">D-${Math.round((p.d - today0()) / 864e5)}</span></span></div><div class="help">${p.bill.start.getMonth()+1}/${p.bill.start.getDate()}~${p.bill.end.getMonth()+1}/${p.bill.end.getDate()} 사용분${p.bill.inst ? ` · 할부 ${won(p.bill.inst)} 포함` : ''}</div></div>`).join('')}</div>` : ''}
     ${isNow ? `<div class="sec">다음 달(${+plan.nm.slice(5)}월) 나갈 돈</div><div class="bars"><div class="bar nogoal tap" data-mtab="inst" role="button" tabindex="0"><div class="top"><span>할부 <span class="go">›</span></span><span>${won(plan.inst)} <span class="help">${plan.instList.length}건</span></span></div></div><div class="bar nogoal tap" data-mtab="fixed" role="button" tabindex="0"><div class="top"><span>고정지출 <span class="go">›</span></span><span>${won(plan.fixed)} <span class="help">${plan.fx.length}건</span></span></div></div>${plan.saves ? `<div class="bar nogoal tap" data-mtab="fixed" role="button" tabindex="0"><div class="top"><span>정기 저축 <span class="go">›</span></span><span>${won(plan.saves)}</span></div></div>` : ''}<div class="bar nogoal"><div class="top"><span>합계</span><span><b>${won(plan.total + plan.saves)}</b></span></div><div class="help">이미 정해진 금액만 더했어요. 새로 쓰는 돈은 빠져 있어요.</div></div></div>` : ''}
     <div class="sec">카드별 사용 <span class="help">(할부는 이번 달 몫만)</span></div>
@@ -1583,7 +1670,7 @@ function detailSheet(spec){
     title = `${name} ${d.getMonth()+1}/${d.getDate()} 결제 예정`;
     sub = `${b.start.getMonth()+1}/${b.start.getDate()}~${b.end.getMonth()+1}/${b.end.getDate()} 사용분${b.inst ? ` · 할부 ${won(b.inst)} 포함` : ''}`;
   } else {
-    items = chargesFor(mk).filter(c => kind === 'cat' ? (c.x.cat || '기타') === name : (c.x.card || '기타') === name);
+    items = chargesFor(mk).filter(c => kind === 'all' ? true : kind === 'cat' ? (c.x.cat || '기타') === name : (c.x.card || '기타') === name);
     title = `${+mk.slice(5)}월 ${name}`; sub = '할부는 이번 달 몫만 더했어요';
   }
   items.sort((a, b) => ((b.x.date || '') + (b.x.time || '')).localeCompare((a.x.date || '') + (a.x.time || '')));
@@ -2134,7 +2221,7 @@ window.addEventListener('scroll', closePop, { passive:true });
 window.addEventListener('resize', closePop);
 document.addEventListener('click', ev => {
   if (!ev.target.closest('#pop') && !ev.target.closest('[data-people]')) closePop();
-  const t = ev.target.closest('button, [data-mdetail], [data-mtab]'); if (!t) { if (ev.target.id === 'scrim') closeSheet(); return; }
+  const t = ev.target.closest('button, [data-mdetail], [data-mtab], [data-acct]'); if (!t) { if (ev.target.id === 'scrim') closeSheet(); return; }
   if (t.dataset.view) { navTo(t.dataset.view); return; }
   if (t.hasAttribute('data-back')) { goBack(); return; }
   if (t.dataset.addev) { editEvent(null, t.dataset.addev); return; }
@@ -2159,7 +2246,9 @@ document.addEventListener('click', ev => {
   if (t.dataset.book) { const bk = t.dataset.book === 'mine' && hasMine() ? 'mine' : 'fam'; state.book = bk; state.instCard = ''; try { localStorage.setItem(BOOKKEY, bk); } catch(e){} render(); window.scrollTo(0, 0); return; }
   if ('icard' in t.dataset) { state.instCard = t.dataset.icard; state.mtab = 'inst'; if (!$('#sheet').hidden) closeSheet(); renderView(); window.scrollTo(0, 0); return; }
   if (t.dataset.mtab) { state.mtab = t.dataset.mtab; renderView(); window.scrollTo(0, 0); return; }
-  if (t.dataset.mdetail) { detailSheet(t.dataset.mdetail); return; }
+  if (t.dataset.mdetail) { const md = t.dataset.mdetail; if (md.startsWith('flow|')) flowSheet(md.slice(5)); else detailSheet(md); return; }
+  if (t.dataset.acct) { acctSheet(t.dataset.acct); return; }
+  if (t.dataset.balance) { if (!state.readOnly) balanceSheet(t.dataset.balance); return; }
   if (t.hasAttribute('data-addfixed')) { editFixed(null); return; }
   if (t.dataset.fixed) { editFixed(t.dataset.fixed); return; }
   if (t.hasAttribute('data-catgoal')) { catGoalSheet(); return; }
