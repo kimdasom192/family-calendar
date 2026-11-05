@@ -393,8 +393,8 @@ state.book = 'fam';
 ['ledger','budget','fixed','catmap'].forEach(k => Object.defineProperty(state, k, { get(){ return books[state.book][k]; }, set(v){ books[state.book][k] = v; }, configurable:true }));
 function inBook(bk, fn){ const prev = state.book; state.book = bk; try { return fn(); } finally { state.book = prev; } }
 function bp(path, bk){ return (bk || state.book) === 'mine' && me ? `private/${me}/${path}` : path; }
-const BOOKCARDS = { fam:['삼성카드','하나카드','롯데카드','하나은행','현금','기타'], mine:['삼성카드','카카오페이','카카오뱅크','기업은행','신한은행','현금','기타'] };
-const BOOKACCTS = { fam:['하나은행','현금'], mine:['카카오페이','카카오뱅크','기업은행','신한은행','현금'] };
+const BOOKCARDS = { fam:['삼성카드','하나카드','롯데카드','하나은행','현금','기타'], mine:['삼성카드','카카오페이','카카오뱅크','기업은행','신한은행','농협','현금','기타'] };
+const BOOKACCTS = { fam:['하나은행','현금'], mine:['카카오페이','카카오뱅크','기업은행','신한은행','농협','현금'] };
 function cards(bk){ return BOOKCARDS[bk || state.book]; }
 function isAcct(c, bk){ return BOOKACCTS[bk || state.book].includes(c); }
 function mainAcct(bk){ return (bk || state.book) === 'mine' ? '카카오뱅크' : '하나은행'; }
@@ -1291,6 +1291,7 @@ function detectCard(app, s, bk){
     if (/카카오\s*페이|kakao\s*pay|카카오페이/i.test(t)) return '카카오페이';
     if (/기업은행|IBK|i-?ONE|아이원/i.test(t)) return '기업은행';
     if (/신한|SOL|쏠/i.test(t)) return '신한은행';
+    if (/농협|NH|콕뱅크|올원/i.test(t)) return '농협';
     return '';
   }
   if (/롯데|LOCA/i.test(t)) return '롯데카드';
@@ -1306,12 +1307,14 @@ function parseNotice(app, title, text, at, bk){
   if (typeof at === 'string') at = +at.replace(/[^\d]/g, '') || 0;
   if (at && at < 1e12) at = at * 1000;
   const card = detectCard(app, raw, bk);
-  let amount = 0;
+  let amount = 0, m0;
   for (const m of raw.matchAll(/(?:[₩￦]\s*([0-9][0-9,]{0,13})(?![0-9,]*\s*원))|(?:([0-9][0-9,]{0,13})\s*원)/g)) {
     const ctx = raw.slice(Math.max(0, m.index - 8), m.index);
     if (/(누적|잔액|한도|포인트|가용|이용가능|청구)\s*[:：]?\s*$/.test(ctx)) continue;
     amount = +(m[1] || m[2]).replace(/,/g, ''); if (amount) break;
   }
+  // 문자 알림처럼 '원' 없이 "출금 12,000"으로 오는 경우
+  if (!amount && (m0 = raw.match(/(출금|입금|승인|결제|이체|사용|지급)\s*[:：]?\s*([0-9][0-9,]{2,13})(?![0-9])/))) amount = +m0[2].replace(/,/g, '');
   let type = 'out';
   if (/취소/.test(raw)) type = 'cancel';
   else if (/(입금|급여|환급|받으신|받은)/.test(raw) && !/출금/.test(raw)) type = 'in';
@@ -1322,7 +1325,7 @@ function parseNotice(app, title, text, at, bk){
   const inst = (raw.match(/(\d{1,2})\s*개월/) || [])[1];
   const installment = inst ? `${inst}개월 할부` : /일시불/.test(raw) ? '일시불' : '';
   // 가맹점: 알려진 말을 지우고 남는 것 중 가장 그럴듯한 줄
-  const STRIP = [/\[[^\]]*\]/g, /\([^)]*\)/g, /Web발신/gi, /monimo|모니모|디지로카|하나Pay|하나페이|하나원큐|카카오\s*(뱅크|페이)|kakao\s*(bank|pay)|IBK|i-?ONE\s*Bank|기업은행|신한\s*(SOL|쏠)?\s*(뱅크|은행)?/gi, /(삼성|하나|롯데)\s*(카드|은행|Pay|페이)?/g, /LOCA/gi, /원큐|1Q/gi,
+  const STRIP = [/\[[^\]]*\]/g, /\([^)]*\)/g, /Web발신/gi, /monimo|모니모|디지로카|하나Pay|하나페이|하나원큐|카카오\s*(뱅크|페이)|kakao\s*(bank|pay)|IBK|i-?ONE\s*Bank|기업은행|신한\s*(SOL|쏠)?\s*(뱅크|은행|체크)?|NH\s*콕뱅크|NH농협|농협\s*(은행)?/gi, /(삼성|하나|롯데)\s*(카드|은행|Pay|페이)?/g, /LOCA/gi, /원큐|1Q/gi,
     /[₩￦]\s*[0-9][0-9,]*\s*원?/g, /[0-9][0-9,]*\s*원/g, /\d{1,2}[\/.\-]\d{1,2}\s*\d{1,2}:\d{2}/g, /\d{1,2}:\d{2}/g, /\d{1,2}\s*개월/g,
     /(승인|결제|일시불|할부|체크|신용|해외|국내|누적|잔액|한도|사용|이용|금액|가맹점|고객님|회원님|님|취소|정상|완료|출금|입금|이체|알림|카드)/g,
     /\S\*+\S?/g, /\*{2,}\d*/g, /\d{3,}/g, /[:：|·•,]/g];
@@ -1507,8 +1510,8 @@ function parseMoneyLine(line){
   else if ((m = s.match(/(\d[\d,]*)\s*원?(?![\d\/:.])/))) { amount = +m[1].replace(/,/g, ''); s = s.replace(m[0], ' '); }
   let card = '';
   if (state.book === 'mine') {
-    if (/삼성/.test(s)) card = '삼성카드'; else if (/카카오\s*뱅크|카뱅/.test(s)) card = '카카오뱅크'; else if (/카카오\s*페이|카페/.test(s)) card = '카카오페이'; else if (/기업|IBK/i.test(s)) card = '기업은행'; else if (/신한/.test(s)) card = '신한은행'; else if (/현금/.test(s)) card = '현금';
-    s = s.replace(/삼성\s*카드?|카카오\s*(뱅크|페이)|카뱅|기업\s*은행?|IBK|신한\s*은행?|현금|일시불/gi, ' ');
+    if (/삼성/.test(s)) card = '삼성카드'; else if (/카카오\s*뱅크|카뱅/.test(s)) card = '카카오뱅크'; else if (/카카오\s*페이|카페/.test(s)) card = '카카오페이'; else if (/기업|IBK/i.test(s)) card = '기업은행'; else if (/신한/.test(s)) card = '신한은행'; else if (/농협|NH/i.test(s)) card = '농협'; else if (/현금/.test(s)) card = '현금';
+    s = s.replace(/삼성\s*카드?|카카오\s*(뱅크|페이)|카뱅|기업\s*은행?|IBK|신한\s*은행?|농협|NH|현금|일시불/gi, ' ');
   } else {
     if (/삼성/.test(s)) card = '삼성카드'; else if (/롯데/.test(s)) card = '롯데카드'; else if (/하나\s*은행/.test(s)) card = '하나은행'; else if (/하나/.test(s)) card = '하나카드'; else if (/현금/.test(s)) card = '현금';
     s = s.replace(/(삼성|롯데|하나)\s*(카드|은행)?|현금|일시불/g, ' ');
