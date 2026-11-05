@@ -1438,7 +1438,7 @@ async function processInbox(docs, bk){
       const unbrace = v => String(v || '').trim().replace(/^\{+/, '').replace(/\}+$/, '');
       const p = parseNotice(unbrace(x.app), x.title, unbrace(x.text), x.at, bk);
       // 광고·안내처럼 금액도 결제 말도 없는 알림은 버리기
-      if (!p.amount && !/[가-힣A-Za-z0-9]/.test((p.raw || '').replace(/lv=t|not_\w+|notification|[{}|\/]/g, ''))) { await db.doc(P('inbox/' + id)).delete(); await db.collection(P('log')).add({ act:'alert', type:'budget', lv:0, ref:'', date:'', changes:[bk === 'mine' ? '내 휴대폰에서 보낸 시험 알림이 잘 도착했어요.' : '진우 님 휴대폰에서 보낸 시험 알림이 잘 도착했어요.'], title:'📱 카드 알림 연결 확인', at:Date.now(), by:'system' }); continue; }
+      if (!p.amount && !/[가-힣A-Za-z0-9]/.test((p.raw || '').replace(/\{[^{}]*\}|lv=t|not_\w+|notification|[{}|\/]/g, ''))) { await db.doc(P('inbox/' + id)).delete(); await db.collection(P('log')).add({ act:'alert', type:'budget', lv:0, ref:'', date:'', changes:[bk === 'mine' ? '내 휴대폰에서 보낸 시험 알림이 잘 도착했어요.' : '진우 님 휴대폰에서 보낸 시험 알림이 잘 도착했어요.'], title:'📱 카드 알림 연결 확인', at:Date.now(), by:'system' }); continue; }
       if (!p.amount && !/(승인|결제|입금|출금|취소|이체|사용)/.test(p.raw)) { await db.doc(P('inbox/' + id)).delete(); continue; }
       // 카드값 결제·본인 계좌 이체는 이미 카드 쪽에 있으니 빼기
       if (isAcct(p.card, bk) && p.card !== '현금') { const own = ((state.config.names.surname || '') + (state.config.names[bk === 'mine' ? 'me' : 'hus'] || '')).trim();
