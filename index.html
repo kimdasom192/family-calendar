@@ -96,6 +96,8 @@ header{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var
 .warnx{color:var(--danger, #c0392b);font-weight:600}
 .bookhelp{margin:-2px 0 10px}
 .mstats.inst3{grid-template-columns:1.12fr 1.12fr .76fr}
+.mstats.six{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media (min-width:640px){.mstats.six{grid-template-columns:repeat(6,minmax(0,1fr))}}
 .mstats.four{grid-template-columns:repeat(2,minmax(0,1fr))}
 @media (min-width:560px){.mstats.four{grid-template-columns:repeat(4,minmax(0,1fr))}}
 .save{color:var(--sat)} .amt.out{color:var(--sun)} .amt.in{color:var(--accent)} .amt.save{color:var(--sat)}
@@ -1602,7 +1604,28 @@ function acctSheet(c){
     <div class="sec">${+mk.slice(5)}월 거래 ${list.length}건</div>
     ${list.length ? `<div class="dcard"><div class="items">${list.map(x => mrow(x, `<span>${+x.date.slice(5, 7)}/${+x.date.slice(8)}</span>`)).join('')}</div></div>` : '<div class="empty" style="padding:0">이번 달 기록된 거래가 없어요.</div>'}`);
 }
+function billsOf(mk){
+  const [y, m] = mk.split('-').map(Number);
+  return cards().filter(c => payInfo(c)).map(c => { const d = new Date(y, m - 1, payInfo(c).day); return { c, d, bill:billFor(c, d) }; }).filter(x => x.bill).sort((a, b) => a.d - b.d);
+}
+function acctTotal(){
+  const bal = (state.book === 'mine' ? books.mine.balances : books.fam.balances) || {};
+  const ks = BOOKACCTS[state.book].filter(c => c !== '현금' && bal[c]);
+  return ks.length ? ks.reduce((a, c) => a + (acctNow(c) || { now:0 }).now, 0) : null;
+}
 function flowSheet(kind){
+  if (kind === 'bills') {
+    const mk = monthKey(state.cursor), list = billsOf(mk), t = today0();
+    const total = list.reduce((a, x) => a + x.bill.total, 0);
+    openSheet(`<div class="sh"><h3>${+mk.slice(5)}월 카드 결제</h3><button class="ghost" data-close>닫기</button></div>
+      <div class="mstats"><div><span>합계</span><b class="out">${won(total)}</b></div><div><span>할부 포함</span><b>${won(list.reduce((a, x) => a + x.bill.inst, 0))}</b></div><div><span>카드</span><b>${list.length}장</b></div></div>
+      ${list.length ? `<div class="bars">${list.map(x => { const dd = Math.round((x.d - t) / 864e5); return `<div class="bar nogoal tap" data-mdetail="bill|${esc(x.c)}|${ymd(x.d)}" role="button" tabindex="0"><div class="top"><span>${esc(x.c)} · ${x.d.getMonth()+1}/${x.d.getDate()} 결제 <span class="go">›</span></span><span><b>${won(x.bill.total)}</b> <span class="help">${dd > 0 ? 'D-' + dd : dd === 0 ? '오늘' : '결제일 지남'}</span></span></div><div class="help">${x.bill.start.getMonth()+1}/${x.bill.start.getDate()}~${x.bill.end.getMonth()+1}/${x.bill.end.getDate()} 사용분${x.bill.inst ? ` · 할부 ${won(x.bill.inst)} 포함` : ''}</div></div>`; }).join('')}</div>` : '<div class="empty" style="padding:0">결제일이 정해진 카드가 없어요. 목표·결제일 탭에서 결제일을 넣어 주세요.</div>'}`);
+    return;
+  }
+  if (kind === 'bal') {
+    openSheet(`<div class="sh"><h3>통장 잔액</h3><button class="ghost" data-close>닫기</button></div>${balanceHtml()}<p class="help">통장을 누르면 거래 내역과 남은 자동이체를 볼 수 있어요.</p>`);
+    return;
+  }
   const mk = monthKey(state.cursor), m = +mk.slice(5);
   if (kind === 'left') {
     const out = monthOut(mk), inn = monthIn(mk), sav = monthSave(mk);
@@ -1652,7 +1675,7 @@ function moneySum(){
   const td = ymd(today0()), tdl = isNow ? state.ledger.filter(x => x.date === td).sort((a, c) => tkey(c).localeCompare(tkey(a))) : [];
   const tdOut = tdl.filter(x => x.type === 'out' && !x.cancelled).reduce((s2, x) => s2 + (+x.amount || 0), 0);
   const today = isNow ? `<section class="dcard today"><div class="dhead"><span class="d">오늘 · ${dLabel(td)}</span><span class="t">${tdl.length ? `${tdOut ? '결제 ' + won(tdOut) + ' · ' : ''}${tdl.length}건` : ''}</span></div>${tdl.length ? `<div class="items">${tdl.map(x => mrow(x)).join('')}</div>` : '<div class="empty" style="padding:12px 14px">오늘은 아직 쓴 돈이 없어요.</div>'}</section>` : '';
-  return today + `<div class="mstats four"><div class="tap" data-mdetail="flow|out" role="button" tabindex="0"><span>지출 ›</span><b class="out">${won(out)}</b></div><div class="tap" data-mdetail="flow|in" role="button" tabindex="0"><span>입금 ›</span><b class="in">${won(inn)}</b></div><div class="tap" data-mdetail="flow|save" role="button" tabindex="0"><span>저축 ›</span><b class="save">${won(sav)}</b></div><div class="tap" data-mdetail="flow|left" role="button" tabindex="0"><span>남은 돈 ›</span><b>${won(inn - out - sav)}</b></div></div>
+  return today + `<div class="mstats six"><div class="tap" data-mdetail="flow|out" role="button" tabindex="0"><span>지출 ›</span><b class="out">${won(out)}</b></div><div class="tap" data-mdetail="flow|in" role="button" tabindex="0"><span>입금 ›</span><b class="in">${won(inn)}</b></div><div class="tap" data-mdetail="flow|save" role="button" tabindex="0"><span>저축 ›</span><b class="save">${won(sav)}</b></div><div class="tap" data-mdetail="flow|left" role="button" tabindex="0"><span>남은 돈 ›</span><b>${won(inn - out - sav)}</b></div><div class="tap" data-mdetail="flow|bills" role="button" tabindex="0"><span>${+mk.slice(5)}월 카드 결제 ›</span><b class="out">${billsOf(mk).length ? won(billsOf(mk).reduce((a, x) => a + x.bill.total, 0)) : '-'}</b></div><div class="tap" data-mdetail="flow|bal" role="button" tabindex="0"><span>통장 잔액 ›</span><b>${(() => { const t = acctTotal(); return t == null ? '-' : won(t); })()}</b></div></div>
     <div class="cmp">지난달보다 지출 <b class="${out > pout ? 'out' : 'in'}">${pctTxt(out, pout)}</b> <span class="help">(지난달 ${won(pout)})</span>${deltas.length ? `<div class="help">${deltas.map(x => `${esc(x.c)} ${x.d > 0 ? '+' : ''}${won(x.d)}`).join(' · ')}</div>` : ''}</div>
     <div class="btns" style="margin-bottom:12px">${state.readOnly ? '' : '<button class="primary" data-addmoney style="height:38px">+ 내역 추가</button>'}<button class="ghost" data-export>엑셀로 받기</button></div>
     ${isNow ? balanceHtml() : ''}
@@ -1664,11 +1687,12 @@ function moneySum(){
     ${b.saves.length ? `<div class="sec">저축 목표</div><div class="bars">${b.saves.map(g => { const sum = state.ledger.filter(x => x.type === 'save' && x.goal === g.id && !x.cancelled).reduce((s, x) => s + (+x.amount || 0), 0); return barHtml(g.name, sum, +g.target || 0, ''); }).join('').replace(/class="bar (warn|over)"/g, 'class="bar ok"')}</div>` : ''}`;
 }
 function detailSheet(spec){
-  const k = spec.indexOf('|'), kind = spec.slice(0, k), name = spec.slice(k + 1);
+  const k = spec.indexOf('|'), kind = spec.slice(0, k); let name = spec.slice(k + 1);
   const mk = monthKey(state.cursor);
   let items, title, sub = '';
   if (kind === 'bill') {
-    const d = nextPayDate(name), b = billFor(name, d); items = b.items;
+    const [cn, ds] = name.split('|'); name = cn;
+    const d = ds ? fromYmd(ds) : nextPayDate(cn), b = billFor(cn, d); items = b.items;
     title = `${name} ${d.getMonth()+1}/${d.getDate()} 결제 예정`;
     sub = `${b.start.getMonth()+1}/${b.start.getDate()}~${b.end.getMonth()+1}/${b.end.getDate()} 사용분${b.inst ? ` · 할부 ${won(b.inst)} 포함` : ''}`;
   } else {
