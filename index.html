@@ -1097,6 +1097,7 @@ async function boot(){
     db.doc(P + 'config/budget').onSnapshot(s => { books.mine.budget = s.exists ? s.data() : {}; if (showing('mine') && state.view === 'money') renderView(); }, pErr);
     db.doc(P + 'config/fixed').onSnapshot(s => { books.mine.fixed = (s.exists && s.data().items) || []; if (showing('mine') && state.view === 'money') renderView(); if (!s.metadata.fromCache) scheduleBudgetCheck(); }, pErr);
     db.doc(P + 'config/catmap').onSnapshot(s => { books.mine.catmap = (s.exists && s.data().map) || {}; }, pErr);
+    db.doc(P + 'config/lastInbox').onSnapshot(s => { books.mine.lastInbox = s.exists ? s.data() : null; if (showing('mine') && state.view === 'money') renderView(); }, pErr);
     db.collection(P + 'inbox').onSnapshot(s => { if (!s.metadata.fromCache && s.docs.length) processInbox(s.docs, 'mine'); }, pErr);
     db.collection(P + 'log').onSnapshot(s => { logs.mine = s.docs.map(d => ({ id:d.id, _p:1, ...d.data() })); mergeLog(); }, pErr);
     try { if (localStorage.getItem(BOOKKEY) === 'mine') state.book = 'mine'; } catch(e){}
@@ -1433,6 +1434,7 @@ async function processInbox(docs, bk){
   try {
     for (const d of docs) {
       const x = d.data(), id = d.id;
+      try { await db.doc(P('config/lastInbox')).set({ at:Date.now(), app:String(x.app || '').slice(0, 40), text:String(x.text || '').slice(0, 80) }); } catch(e){}
       const unbrace = v => String(v || '').trim().replace(/^\{+/, '').replace(/\}+$/, '');
       const p = parseNotice(unbrace(x.app), x.title, unbrace(x.text), x.at, bk);
       // 광고·안내처럼 금액도 결제 말도 없는 알림은 버리기
@@ -1649,7 +1651,7 @@ function moneyGoal(){
     <div class="sec">저축 목표</div>
     ${b.saves.length ? `<div class="bars">${b.saves.map(g => { const sum = state.ledger.filter(x => x.type === 'save' && x.goal === g.id && !x.cancelled).reduce((s, x) => s + (+x.amount || 0), 0); return barHtml(g.name, sum, +g.target || 0, ''); }).join('').replace(/class="bar (warn|over)"/g, 'class="bar ok"')}</div>` : '<div class="empty" style="padding:0 0 4px">"여행 자금 300만 원"처럼 목표를 만들고, 내역에서 저축으로 넣으면 쌓여요. 입력칸에 "저축 여행 10만"처럼 적어도 돼요.</div>'}
     <div class="btns" style="margin:10px 0 0">${state.readOnly ? '' : '<button class="ghost" data-savegoal>저축 목표 관리</button>'}</div>
-    ${state.book === 'mine' && me ? `<div class="sec">📱 내 휴대폰 카드 알림 연결</div><p class="help" style="margin:0 0 6px">휴대폰 자동 기록을 설정할 때 쓰는 주소예요. 수리가 알려 주는 순서대로 넣으면 돼요.</p><div class="dcard" style="padding:10px 12px;font-size:12px;word-break:break-all;user-select:all">https://firestore.googleapis.com/v1/projects/${esc((window.FIREBASE_CONFIG || {}).projectId || '')}/databases/(default)/documents/private/${esc(me)}/inbox</div>` : ''}`;
+    ${state.book === 'mine' && me ? `<div class="sec">📱 내 휴대폰 카드 알림 연결</div><p class="help" style="margin:0 0 6px">휴대폰 자동 기록을 설정할 때 쓰는 주소예요. 수리가 알려 주는 순서대로 넣으면 돼요.</p><div class="dcard" style="padding:10px 12px;font-size:12px;word-break:break-all;user-select:all">https://firestore.googleapis.com/v1/projects/${esc((window.FIREBASE_CONFIG || {}).projectId || '')}/databases/(default)/documents/private/${esc(me)}/inbox</div><p class="help" style="margin:8px 0 0">${books.mine.lastInbox ? `마지막으로 받은 알림: <b>${esc(new Date(books.mine.lastInbox.at).toLocaleString('ko-KR', { month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' }))}</b> · ${esc(books.mine.lastInbox.app || '앱 이름 없음')}<br><span style="word-break:break-all">${esc(books.mine.lastInbox.text || '')}</span>` : '아직 휴대폰에서 받은 알림이 없어요.'}</p>` : ''}`;
 }
 function editMoney(id){
   const isNew = !id;
