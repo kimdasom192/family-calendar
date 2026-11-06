@@ -94,6 +94,20 @@ header{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var
 .mstats .tap{cursor:pointer}
 .mstats .tap:hover{background:var(--surface2)}
 .warnx{color:var(--danger, #c0392b);font-weight:600}
+:root{--cyc:#e0607e}
+.cy{display:inline-block;width:7px;height:7px;border-radius:50%;flex:none}
+.cy.on{background:var(--cyc)}
+.cy.pred{border:1.5px solid var(--cyc);width:6px;height:6px}
+.cy.fertile{background:#7cc58f;width:5px;height:5px;opacity:.8}
+.cyx{font-size:10px;line-height:1.25;padding:1px 4px;border-radius:5px;background:color-mix(in srgb, #6b8fb3 18%, transparent);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cycard{display:flex;align-items:center;gap:10px;flex-wrap:wrap;border:1px solid color-mix(in srgb, var(--cyc) 35%, var(--line));background:color-mix(in srgb, var(--cyc) 7%, var(--surface));border-radius:var(--r);padding:10px 12px;margin-bottom:10px}
+.cycard.share{border-color:var(--line);background:color-mix(in srgb, #6b8fb3 10%, var(--surface))}
+.cycard .grow{flex:1;min-width:150px}
+.cybtns{display:flex;gap:6px;flex-wrap:wrap}
+.cybtns .ghost{height:32px;padding:0 10px;font-size:13px}
+.chips.wrap{flex-wrap:wrap;overflow:visible}
+.tgl{display:flex;gap:8px;align-items:flex-start;padding:8px 0;font-size:14px}
+.tgl+.tgl{border-top:1px solid var(--line)}
 .bookhelp{margin:-2px 0 10px}
 .mstats.inst3{grid-template-columns:1.12fr 1.12fr .76fr}
 .mstats.six{grid-template-columns:repeat(3,minmax(0,1fr))}
@@ -574,6 +588,12 @@ function guessDate(mo, d){
 function parseLine(line, base){
   if (!line.trim()) return null;
   if (/^\s*(지출|입금|저축|가계부)\s/.test(line + ' ') || state.view === 'money') return parseMoneyLine(line);
+  if (/생리/.test(line)) {
+    const m = line.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일?|(\d{1,2})\s*[\/.]\s*(\d{1,2})|^\s*(\d{1,2})\s+(\d{1,2})(?!\d)/);
+    let date = m ? ymd(guessDate(+(m[1]||m[3]||m[5]), +(m[2]||m[4]||m[6]))) : /어제/.test(line) ? ymd(addDays(today0(), -1)) : state.view === 'day' ? ymd(base) : ymd(today0());
+    if (date > ymd(today0()) && m) { const y = fromYmd(date); y.setFullYear(y.getFullYear() - 1); if (dd0(ymd(y), ymd(today0())) < 300) date = ymd(y); }
+    return { kind:'cycle', act:/(끝|종료|마지막)/.test(line) ? 'end' : 'start', date, notes:cycOwner() ? [] : ['다솜 계정에서만 쓸 수 있어요'] };
+  }
   let az = line.match(/^\s*기념일\s*[:：]?\s*([\s\S]+)$/);
   if (!az && !/^\s*(공지|알림)/.test(line)) {
     const kw = /(생일|생신|기일|제사|결혼\s*기념일|주년)(?!\s*(파티|잔치|선물|모임|준비|케이크|케익))/.test(line);
@@ -804,7 +824,7 @@ function isNew(x){ return state.seenAt != null && x && x.by && me && x.by !== me
 const KIND = { event:'일정', work:'근무', anniv:'기념일', notice:'공지' };
 function newItems(){
   if (state.seenAt == null || !me) return [];
-  return state.log.filter(x => x.by && x.by !== me && (x.at||0) > state.seenAt).sort((a,b) => b.at - a.at);
+  return state.log.filter(x => x.by && x.by !== me && (x.at||0) > state.seenAt && (!x.to || x.to.includes(state.myWho))).sort((a,b) => b.at - a.at);
 }
 async function resolveNames(ids){
   const need = ids.filter(id => !(id in names)); if (!need.length || !user?.profiles) return;
@@ -819,9 +839,10 @@ async function bellSheet(){
   const items = newItems();
   const ago = t => { const m = Math.round((Date.now() - t) / 60000); return m < 60 ? `${Math.max(1,m)}분 전` : m < 1440 ? `${Math.round(m/60)}시간 전` : `${Math.round(m/1440)}일 전`; };
   const who = id => state.members[id] ? catLabel(state.members[id]) : '가족';
-  const BADGE = { new:['신규','b-new'], edit:['수정','b-edit'], del:['삭제','b-del'], alert:['목표','b-warn'] };
-  const bd = x => x.act === 'alert' ? (x.lv >= 100 ? ['초과','b-del'] : x.lv >= 90 ? ['90%','b-warn'] : ['연결','b-new']) : (BADGE[x.act] || ['알림','b-edit']);
+  const BADGE = { new:['신규','b-new'], edit:['수정','b-edit'], del:['삭제','b-del'], alert:['목표','b-warn'], cyc:['알림','b-warn'] };
+  const bd = x => x.type === 'cycle' ? (x.to ? ['주의보','b-warn'] : ['🌙','b-new']) : x.act === 'alert' ? (x.lv >= 100 ? ['초과','b-del'] : x.lv >= 90 ? ['90%','b-warn'] : ['연결','b-new']) : (BADGE[x.act] || ['알림','b-edit']);
   const link = x => {
+    if (x.type === 'cycle') return x.to ? 'disabled' : 'data-cycsheet';
     if (x.act === 'alert') return 'data-gomoney';
     if (x.act === 'del') return 'disabled';
     if (x.type === 'event' && state.events.some(e => e.id === x.ref)) return `data-ev="${esc(x.ref)}"`;
@@ -830,10 +851,10 @@ async function bellSheet(){
     if (x.type === 'notice' && state.notices.some(n => n.id === x.ref)) return `data-notice="${esc(x.ref)}"`;
     return 'disabled';
   };
-  const counts = { new:0, edit:0, del:0, alert:0 }; items.forEach(x => counts[x.act] = (counts[x.act]||0) + 1);
+  const counts = { new:0, edit:0, del:0, alert:0, cyc:0 }; items.forEach(x => { const k = x.type === 'cycle' ? 'cyc' : x.act; counts[k] = (counts[k]||0) + 1; });
   openSheet(`<div class="sh"><h3>새 소식</h3><button class="ghost" data-close>닫기</button></div>
-    ${items.length ? `<div class="btns" style="gap:6px">${['new','edit','del','alert'].filter(k => counts[k]).map(k => `<span class="badge ${BADGE[k][1]}">${BADGE[k][0]} ${counts[k]}</span>`).join('')}</div>
-    <div class="notices news" style="margin:0">${items.map(x => `<button class="nitem" ${link(x)}><span class="nt"><span class="badge ${bd(x)[1]}">${bd(x)[0]}</span> <b>${esc(x._p ? '🔒 내 가계부' : x.by === 'system' ? '가계부' : who(x.by))}</b>${x.type === 'budget' ? '' : ' · ' + (KIND[x.type]||'')}${x.date ? ` · ${dLabel(x.date)}` : ''}<br><span style="${x.act==='del'?'text-decoration:line-through;color:var(--muted)':''}">${esc(x.title)}</span>${(x.changes||[]).length ? `<span class="chg">${x.changes.map(c => esc(c)).join('<br>')}</span>` : ''}</span><span class="nd">${ago(x.at)}</span></button>`).join('')}</div>
+    ${items.length ? `<div class="btns" style="gap:6px">${['new','edit','del','alert','cyc'].filter(k => counts[k]).map(k => `<span class="badge ${BADGE[k][1]}">${BADGE[k][0]} ${counts[k]}</span>`).join('')}</div>
+    <div class="notices news" style="margin:0">${items.map(x => `<button class="nitem" ${link(x)}><span class="nt"><span class="badge ${bd(x)[1]}">${bd(x)[0]}</span> <b>${esc(x.type === 'cycle' ? (x.to ? '⚠️ 다솜주의보' : '🌙 내 주기') : x._p ? '🔒 내 가계부' : x.by === 'system' ? '가계부' : who(x.by))}</b>${x.type === 'budget' || x.type === 'cycle' ? '' : ' · ' + (KIND[x.type]||'')}${x.date ? ` · ${dLabel(x.date)}` : ''}<br><span style="${x.act==='del'?'text-decoration:line-through;color:var(--muted)':''}">${esc(x.title)}</span>${(x.changes||[]).length ? `<span class="chg">${x.changes.map(c => esc(c)).join('<br>')}</span>` : ''}</span><span class="nd">${ago(x.at)}</span></button>`).join('')}</div>
     <div class="btns"><button class="primary" data-seenall>모두 확인</button></div>`
     : '<p style="margin:0;color:var(--muted)">새로 바뀐 내용이 없어요.</p>'}`);
 }
@@ -842,7 +863,7 @@ async function markSeen(){
   try { localStorage.setItem(SEENKEY, String(t)); } catch(e){}
   if (db && me) { try { await db.collection('data/users/' + me).doc('state').set({ seenAt:t }); } catch(e){} }
   closeSheet(); render(); toast('모두 확인했어요');
-  const old = state.log.filter(x => (x.at||0) < t - 60 * 864e5).slice(0, 50);
+  const old = state.log.filter(x => !x._syn && (x.at||0) < t - 60 * 864e5).slice(0, 50);
   for (const x of old) { try { await db.doc(x._p ? bp('log/' + x.id, 'mine') : 'log/' + x.id).delete(); } catch(e){ break; } }
 }
 async function initSeen(){
@@ -1017,6 +1038,144 @@ function loginFlow(){
     draw();
   });
 }
+/* ===== 🌙 내 주기 (본인만 보는 기록 · private/<uid>/config/cycle) ===== */
+const cyc = { loaded:false, periods:[], settings:{ share:true, warn:true, alert:true } };
+function cycOwner(){ return !!db && !local && !!me && state.myWho === 'me'; }
+const dd0 = (a, b) => Math.round((fromYmd(b) - fromYmd(a)) / 864e5);
+function cycPred(){
+  const ps = cyc.periods.filter(p => p.start).slice().sort((a, b) => a.start.localeCompare(b.start));
+  if (!ps.length) return null;
+  const iv = []; for (let i = 1; i < ps.length; i++) { const g = dd0(ps[i-1].start, ps[i].start); if (g >= 15 && g <= 60) iv.push(g); }
+  const recent = iv.slice(-6);
+  const avgCycle = recent.length ? Math.round(recent.reduce((a, b) => a + b, 0) / recent.length) : 28;
+  const lens = ps.filter(p => p.end).map(p => dd0(p.start, p.end) + 1).filter(n => n >= 1 && n <= 12).slice(-6);
+  const avgLen = lens.length ? Math.round(lens.reduce((a, b) => a + b, 0) / lens.length) : 5;
+  const last = ps[ps.length - 1], td = ymd(today0());
+  const lastEnd = last.end || ymd(addDays(fromYmd(last.start), avgLen - 1));
+  const ongoing = !last.end && dd0(last.start, td) >= 0 && dd0(last.start, td) < 10;
+  const next = ymd(addDays(fromYmd(last.start), avgCycle));
+  const overdue = dd0(next, td) > 0 ? dd0(next, td) : 0;
+  const future = []; for (let k = 0; k < 3; k++) { const s = ymd(addDays(fromYmd(next), avgCycle * k)); future.push({ start:s, end:ymd(addDays(fromYmd(s), avgLen - 1)) }); }
+  const ov = ymd(addDays(fromYmd(next), -14));
+  const irregular = recent.length >= 3 && (Math.max(...recent) - Math.min(...recent) > 7);
+  return { ps, last, lastEnd, ongoing, avgCycle, avgLen, next, overdue, future, ov, fertile:{ from:ymd(addDays(fromYmd(ov), -5)), to:ymd(addDays(fromYmd(ov), 1)) }, iv:recent, irregular, enough:iv.length >= 2 };
+}
+const inR = (ds, a, b) => ds >= a && ds <= b;
+function cycDay(ds){
+  if (!cyc.loaded || !cycOwner()) return null;
+  const p = cycPred(); if (!p) return null;
+  for (const r of p.ps) { const e = r.end || (r === p.last ? p.lastEnd : r.start); if (inR(ds, r.start, e)) return { kind:'on', n:dd0(r.start, ds) + 1, r }; }
+  for (const f of p.future) if (!p.ongoing && inR(ds, f.start, f.end) && ds > p.lastEnd) return { kind:'pred', n:dd0(f.start, ds) + 1 };
+  if (inR(ds, p.fertile.from, p.fertile.to) && ds > p.lastEnd) return { kind:'fertile', ov:ds === p.ov };
+  return null;
+}
+async function saveCyc(){ await db.doc(bp('config/cycle', 'mine')).set({ periods:cyc.periods, settings:cyc.settings, at:Date.now() }); }
+async function cycStart(ds){ const p = cycPred(); if (p && p.ongoing && dd0(p.last.start, ds) < 10 && dd0(p.last.start, ds) >= 0) { toast('이미 기록 중이에요'); return; } cyc.periods.push({ id:'c' + Date.now().toString(36), start:ds, end:'', flow:'', sym:[], memo:'' }); await saveCyc(); toast('🌙 시작일을 기록했어요'); }
+async function cycEnd(ds){ const ps = cyc.periods.filter(p => p.start <= ds).sort((a, b) => b.start.localeCompare(a.start)); const r = ps[0]; if (!r || dd0(r.start, ds) > 14) { toast('먼저 시작일을 기록해 주세요'); return; } r.end = ds; await saveCyc(); toast('🌙 끝난 날을 기록했어요'); }
+/* 진우님 쪽에 보낼 것: 날짜와 "컨디션" 표시만 (기록 자체는 안 보냄) */
+let cycShareSig = '';
+async function syncCycShare(){
+  if (!cycOwner() || !cyc.loaded) return;
+  const p = cycPred(), st = cyc.settings || {};
+  const cond = [], td = ymd(today0());
+  if (p && st.share !== false) {
+    if (p.ongoing || p.lastEnd >= td) cond.push({ from:p.last.start, to:p.lastEnd });
+    if (!p.ongoing && !p.overdue) cond.push({ from:p.next, to:p.future[0].end });
+  }
+  const warn = p && st.warn !== false && !p.ongoing && !p.overdue ? { from:ymd(addDays(fromYmd(p.next), -7)), to:ymd(addDays(fromYmd(p.next), -1)), start:p.next } : null;
+  const doc = { owner:'me', cond, warn, to:['hus'], at:Date.now() };
+  const sig = JSON.stringify({ cond, warn });
+  if (sig === cycShareSig) return; cycShareSig = sig;
+  try { const cur = state.cycShare; if (cur && JSON.stringify({ cond:cur.cond, warn:cur.warn }) === sig) return; await db.doc('share/cycle').set(doc); } catch(e){}
+}
+async function cycAlerts(){
+  if (!cycOwner() || !cyc.loaded) return;
+  const p = cycPred(); if (!p || p.ongoing) return;
+  const td = ymd(today0()), left = dd0(td, p.next);
+  let key = '', text = '';
+  if ((cyc.settings || {}).alert === false) {} else if (left === 2 || left === 1) { key = `cyc_${p.next}_d2`; text = `🌙 예정일이 ${left}일 남았어요 (${+p.next.slice(5,7)}/${+p.next.slice(8)})`; }
+  else if (left === 0) { key = `cyc_${p.next}_d0`; text = '🌙 오늘이 예정일이에요'; }
+  if (key && !logs.mine.some(x => x.id === key)) { try { const ref = db.doc(bp('log/' + key, 'mine')); if (!(await ref.get()).exists) await ref.set({ act:'alert', type:'cycle', lv:0, ref:'', date:td, changes:[text], by:'system', at:Date.now() }); } catch(e){} }
+  // 일주일 전: 진우님 🔔에만 "다솜주의보" 한 번
+  if ((cyc.settings || {}).warn !== false && !p.overdue && left >= 1 && left <= 7) {
+    const wk = 'cyc_warn_' + p.next;
+    if (!logs.fam.some(x => x.id === wk)) { try { const ref = db.doc('log/' + wk); if (!(await ref.get()).exists) await ref.set({ act:'alert', type:'cycle', lv:90, ref:'', date:td, to:['hus'], changes:[`⚠️ 다솜주의보 예비 발령! ${+p.next.slice(5,7)}/${+p.next.slice(8)}쯤부터 다솜 컨디션이 안 좋을 수 있어요. 간식 비축 권장 🍫`], by:'system', at:Date.now() }); } catch(e){} }
+  }
+}
+/* 진우님 화면용 */
+const WARN_MSG = d => d >= 6 ? `⚠️ 다솜주의보 예비 발령 (D-${d}) · 달달한 간식 비축 시작 🍫`
+  : d >= 4 ? `⚠️ 다솜주의보 D-${d} · 잔소리 면역력 충전 중 🔋`
+  : d >= 2 ? `🚨 다솜주의보 D-${d} · 설거지는 먼저 하는 사람이 승리 🧽`
+  : `🚨 다솜주의보 내일 발령 · 오늘은 무조건 "응 맞아" 🙆‍♂️`;
+function shareView(){ const s = state.cycShare; return s && state.myWho && (s.to || []).includes(state.myWho) ? s : null; }
+function shareDay(ds){
+  const s = shareView(); if (!s) return null;
+  if ((s.cond || []).some(c => inR(ds, c.from, c.to))) return { kind:'cond' };
+  if (s.warn && inR(ds, s.warn.from, s.warn.to)) return { kind:'warn', d:dd0(ds, s.warn.start) };
+  return null;
+}
+function shareTicker(){ const x = shareDay(ymd(today0())); if (!x) return ''; return x.kind === 'warn' ? WARN_MSG(x.d) : '🌧 다솜 컨디션 저하 중 · 따뜻한 말 한마디 + 디저트 효과 좋음 🍰'; }
+function shareLog(){
+  const s = shareView(); if (!s || !s.warn) return [];
+  const td = ymd(today0()); if (td < s.warn.from || td > s.warn.start) return [];
+  return [{ id:'syn_cyc_' + s.warn.start, _syn:1, act:'alert', type:'cycle', lv:90, by:'system', at:fromYmd(s.warn.from).getTime() + 9 * 36e5, changes:[`⚠️ 다솜주의보 예비 발령! ${+s.warn.start.slice(5,7)}/${+s.warn.start.slice(8)}쯤부터 다솜 컨디션이 안 좋을 수 있어요. 간식 비축 권장 🍫`] }];
+}
+/* 화면 */
+const FLOW = { low:'적음', mid:'보통', high:'많음' };
+const SYMS = ['복통','허리통증','두통','피곤함','예민함','붓기','여드름','컨디션 좋음'];
+function cycCard(ds){
+  const x = cycDay(ds), p = cycPred();
+  if (!cycOwner() || !cyc.loaded) return '';
+  let line = '', btns = '';
+  if (x && x.kind === 'on') { line = `🌙 ${x.n}일째${x.r.end ? '' : ' · 진행 중'}`; btns = `${x.r.end ? '' : `<button class="ghost" data-cyc-end="${ds}">이날 끝났어요</button>`}<button class="ghost" data-cyc-edit="${esc(x.r.id)}">기록 수정</button>`; }
+  else { line = x && x.kind === 'pred' ? `🌙 예정일 범위 (${x.n}일째 예상)` : x && x.kind === 'fertile' ? `🌱 가임기 예상${x.ov ? ' · 배란 예정일' : ''}` : p ? `🌙 다음 예정일 ${+p.next.slice(5,7)}/${+p.next.slice(8)}${p.overdue ? ` · ${p.overdue}일 지났어요` : ` · D-${dd0(ymd(today0()), p.next)}`}` : '🌙 내 주기 기록'; btns = `<button class="ghost" data-cyc-start="${ds}">이날 시작했어요</button>`; }
+  return `<div class="cycard"><div class="grow"><b>${line}</b><div class="help">🔒 나만 보여요</div></div><div class="cybtns">${btns}<button class="ghost" data-cycsheet>주기 ›</button></div></div>`;
+}
+function cycSheet(){
+  const p = cycPred(), st = cyc.settings || {}, td = ymd(today0());
+  const rows = (p ? p.ps : []).slice().reverse().map((r, i, a) => { const nx = a[i-1]; const len = r.end ? dd0(r.start, r.end) + 1 : null; const gap = nx ? dd0(r.start, nx.start) : null;
+    return `<button class="mrow" data-cyc-edit="${esc(r.id)}"><span class="tm">${+r.start.slice(5,7)}/${+r.start.slice(8)}</span><span class="mm"><b>${r.start.slice(0,4)}.${r.start.slice(5,7)}.${r.start.slice(8)} ~ ${r.end ? `${+r.end.slice(5,7)}/${+r.end.slice(8)}` : '진행 중'}</b><span class="tags">${len ? `<span>${len}일</span>` : ''}${gap ? `<span>다음까지 ${gap}일</span>` : ''}${r.flow ? `<span class="chipx">${FLOW[r.flow]}</span>` : ''}${(r.sym || []).map(s => `<span class="chipx">${esc(s)}</span>`).join('')}${r.memo ? `<span>${esc(r.memo)}</span>` : ''}</span></span><span class="amt">›</span></button>`; }).join('');
+  openSheet(`<div class="sh"><h3>🌙 내 주기</h3><button class="ghost" data-close>닫기</button></div>
+    <p class="help" style="margin:0">🔒 나만 볼 수 있어요. 다른 가족에게는 아래에서 켠 표시만 가요.</p>
+    ${p ? `<div class="mstats"><div><span>다음 예정일</span><b>${+p.next.slice(5,7)}/${+p.next.slice(8)}</b></div><div><span>${p.ongoing ? '지금' : p.overdue ? '지난 날' : '남은 날'}</span><b>${p.ongoing ? `${dd0(p.last.start, td) + 1}일째` : p.overdue ? `${p.overdue}일` : `D-${dd0(td, p.next)}`}</b></div><div><span>배란 예상</span><b>${+p.ov.slice(5,7)}/${+p.ov.slice(8)}</b></div></div>
+    <div class="mstats"><div><span>평균 주기</span><b>${p.avgCycle}일</b></div><div><span>평균 기간</span><b>${p.avgLen}일</b></div><div><span>기록</span><b>${p.ps.length}번</b></div></div>
+    <p class="help" style="margin:0">${p.enough ? `최근 ${p.iv.length}번 주기로 계산했어요.` : '기록이 2번 이상 쌓이면 내 주기로 계산해요. 지금은 28일·5일로 예상해요.'}${p.irregular ? ' 최근 주기 차이가 커서 예정일이 많이 틀릴 수 있어요.' : ''} 예상일은 참고용이라 피임에는 쓰지 마세요. 주기가 갑자기 많이 바뀌면 병원에서 상담해 보세요.</p>` : '<p style="margin:0">아직 기록이 없어요. 시작한 날을 넣으면 다음 예정일을 계산해 드려요.</p>'}
+    <div class="btns" style="margin:0"><button class="primary" data-cyc-start="${td}">오늘 시작했어요</button><button class="ghost" data-cyc-new>지난 기록 추가</button></div>
+    <div class="sec">알림 · 공유</div>
+    <div class="dcard" style="padding:4px 12px">
+      <label class="tgl"><input type="checkbox" id="cy_alert" ${st.alert !== false ? 'checked' : ''}><span>예정일 2일 전·당일에 내 🔔로 알림</span></label>
+      <label class="tgl"><input type="checkbox" id="cy_share" ${st.share !== false ? 'checked' : ''}><span>${esc(catLabel('hus'))} 달력에 "다솜 컨디션" 표시 (이유는 안 보여요)</span></label>
+      <label class="tgl"><input type="checkbox" id="cy_warn" ${st.warn !== false ? 'checked' : ''}><span>예정일 일주일 전 ${esc(catLabel('hus'))}에게 "⚠️ 다솜주의보" 보내기</span></label>
+    </div>
+    ${rows ? `<div class="sec">기록 ${p.ps.length}번</div><div class="dcard"><div class="items">${rows}</div></div>` : ''}`,
+  root => {
+    ['alert','share','warn'].forEach(k => root.querySelector('#cy_' + k).addEventListener('change', async ev => { cyc.settings = { ...(cyc.settings || {}), [k]:ev.target.checked }; try { await saveCyc(); toast('바꿨어요'); } catch(e){ fail(e); } }));
+  });
+}
+function cycEdit(id){
+  const isNew = !id, r = isNew ? { id:'c' + Date.now().toString(36), start:'', end:'', flow:'', sym:[], memo:'' } : { ...cyc.periods.find(p => p.id === id) };
+  if (!r) return;
+  openSheet(`<div class="sh"><h3>🌙 ${isNew ? '기록 추가' : '기록 수정'}</h3><button class="ghost" data-close>닫기</button></div>
+    <div class="row2"><div class="fld"><label for="cy_s">시작한 날</label><input id="cy_s" type="date" value="${esc(r.start)}"></div><div class="fld"><label for="cy_e">끝난 날</label><input id="cy_e" type="date" value="${esc(r.end || '')}"></div></div>
+    <div class="fld"><label>양</label><div class="chips wrap">${Object.entries(FLOW).map(([k, v]) => `<button class="chip" data-cy-flow="${k}" aria-pressed="${r.flow === k}">${v}</button>`).join('')}</div></div>
+    <div class="fld"><label>증상</label><div class="chips wrap">${SYMS.map(s => `<button class="chip" data-cy-sym="${esc(s)}" aria-pressed="${(r.sym || []).includes(s)}">${esc(s)}</button>`).join('')}</div></div>
+    <div class="fld"><label for="cy_m">메모</label><input id="cy_m" value="${esc(r.memo || '')}" placeholder="선택"></div>
+    <div class="btns">${isNew ? '' : '<button class="danger" id="cy_del">삭제</button>'}<button class="primary" id="cy_ok">저장</button></div>`,
+  root => {
+    root.querySelectorAll('[data-cy-flow]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); const k = b.dataset.cyFlow; r.flow = r.flow === k ? '' : k; root.querySelectorAll('[data-cy-flow]').forEach(x => x.setAttribute('aria-pressed', x.dataset.cyFlow === r.flow)); }));
+    root.querySelectorAll('[data-cy-sym]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); const s = b.dataset.cySym; r.sym = (r.sym || []).includes(s) ? r.sym.filter(x => x !== s) : (r.sym || []).concat(s); b.setAttribute('aria-pressed', r.sym.includes(s)); }));
+    root.querySelector('#cy_ok').addEventListener('click', async () => {
+      r.start = root.querySelector('#cy_s').value; r.end = root.querySelector('#cy_e').value; r.memo = root.querySelector('#cy_m').value.trim();
+      if (!r.start) { toast('시작한 날을 넣어 주세요'); return; }
+      if (r.end && r.end < r.start) { toast('끝난 날이 시작한 날보다 빨라요'); return; }
+      cyc.periods = cyc.periods.filter(p => p.id !== r.id).concat(r);
+      try { await saveCyc(); toast('저장했어요'); cycSheet(); } catch(e){ fail(e); }
+    });
+    const del = root.querySelector('#cy_del');
+    if (del) armDelete(del, async () => { cyc.periods = cyc.periods.filter(p => p.id !== r.id); try { await saveCyc(); toast('지웠어요'); cycSheet(); } catch(e){ fail(e); } });
+  });
+}
+
 async function importData(file){
   const F = FB.F, fs = FB.fs;
   const j = JSON.parse(await file.text());
@@ -1033,6 +1192,7 @@ async function importData(file){
     if (dedupe && (bb.ledger || []).some(e => e.id !== id && !e.cancelled && e.card === d.card && e.type === d.type && +e.amount === +d.amount && e.date === d.date)) return; writes.push([bp('ledger/' + (id || ('imp' + Math.random().toString(36).slice(2, 12))), bk), { src:'import', cancelled:false, review:false, at:Date.now(), ...d }]); });
   if (j.pay && typeof j.pay === 'object') { const cur = bb.budget || {}; writes.push([bp('config/budget', bk), { cards:cur.cards || {}, cats:cur.cats || {}, saves:cur.saves || [], pay:{ ...(cur.pay || {}), ...j.pay }, at:Date.now() }]); }
   if (j.balances && typeof j.balances === 'object') writes.push([bp('config/balances', bk), { ...(bb.balances || {}), ...j.balances }]);
+  if (Array.isArray(j.cycle) && j.cycle.length) { if (!me) throw new Error('로그인한 뒤 가져와 주세요'); const have = new Set(cyc.periods.map(p => p.start)); const add = j.cycle.filter(p => p.start && !have.has(p.start)).map((p, i) => ({ id:'c' + Date.now().toString(36) + i, end:'', flow:'', sym:[], memo:'', ...p })); writes.push([bp('config/cycle', 'mine'), { periods:cyc.periods.concat(add), settings:cyc.settings, at:Date.now() }]); }
   if (j.config) writes.push(['config/main', j.config]);
   for (let i = 0; i < writes.length; i += 400) {
     const b = F.writeBatch(fs);
@@ -1048,6 +1208,7 @@ function accountSheet(){
     <div class="fld"><label for="ac_code">내 코드 바꾸기 (6자리 이상)</label><div class="inrow"><input id="ac_code" inputmode="numeric" maxlength="12" style="flex:1;min-width:0;border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:9px 11px"><button class="primary" id="ac_save">바꾸기</button></div></div>
     <div class="help" id="ac_msg"></div>
     ${true ? `<div class="fld"><label for="ac_file">데이터 가져오기 (.json · 일정·가계부 파일)</label><input id="ac_file" type="file" accept=".json,application/json"></div>` : ''}
+    ${cycOwner() ? '<div class="btns" style="margin:0"><button class="ghost" data-cycsheet>🌙 내 주기 기록 (나만 보기)</button></div>' : ''}
     <div class="btns"><button class="danger" id="ac_out">이 휴대폰에서 나가기</button></div>`,
   root => {
     const msg = root.querySelector('#ac_msg');
@@ -1097,6 +1258,7 @@ async function boot(){
   db.doc('config/balances').onSnapshot(s => { books.fam.balances = s.exists ? s.data() : {}; if (showing('fam') && state.view === 'money') renderView(); }, onErr);
   db.collection('inbox').onSnapshot(s => { if (!s.metadata.fromCache && s.docs.length) processInbox(s.docs, 'fam'); }, onErr);
   const mergeLog = () => { state.log = logs.fam.concat(logs.mine); renderBell(); };
+  db.doc('share/cycle').onSnapshot(s => { state.cycShare = s.exists ? s.data() : null; mergeLog(); renderNotices(); if (state.view === 'month' || state.view === 'day' || state.view === 'week') renderView(); }, () => {});
   db.collection('log').onSnapshot(s => { logs.fam = s.docs.map(d => ({ id:d.id, ...d.data() })); mergeLog(); }, onErr);
   if (me) {
     // 나만 보는 가계부: 규칙상 본인만 읽고 쓸 수 있어요. 아직 준비 전이면 조용히 넘어가요.
@@ -1106,6 +1268,7 @@ async function boot(){
     db.doc(P + 'config/budget').onSnapshot(s => { books.mine.budget = s.exists ? s.data() : {}; if (showing('mine') && state.view === 'money') renderView(); }, pErr);
     db.doc(P + 'config/fixed').onSnapshot(s => { books.mine.fixed = (s.exists && s.data().items) || []; if (showing('mine') && state.view === 'money') renderView(); if (!s.metadata.fromCache) scheduleBudgetCheck(); }, pErr);
     db.doc(P + 'config/catmap').onSnapshot(s => { books.mine.catmap = (s.exists && s.data().map) || {}; }, pErr);
+    db.doc(P + 'config/cycle').onSnapshot(s => { const d = s.exists ? s.data() : {}; cyc.periods = d.periods || []; cyc.settings = { share:true, warn:true, alert:true, ...(d.settings || {}) }; cyc.loaded = true; if (state.view === 'month' || state.view === 'day') renderView(); if (!s.metadata.fromCache) { syncCycShare(); cycAlerts(); } }, pErr);
     db.doc(P + 'config/balances').onSnapshot(s => { books.mine.balances = s.exists ? s.data() : {}; if (showing('mine') && state.view === 'money') renderView(); }, pErr);
     db.doc(P + 'config/lastInbox').onSnapshot(s => { books.mine.lastInbox = s.exists ? s.data() : null; if (showing('mine') && state.view === 'money') renderView(); }, pErr);
     db.collection(P + 'inbox').onSnapshot(s => { if (!s.metadata.fromCache && s.docs.length) processInbox(s.docs, 'mine'); }, pErr);
@@ -1169,12 +1332,13 @@ function renderNotices(){
   const el = $('#ntick'); if (!el) return;
   const list = activeNotices(), up = upcomingAnnivs(30);
   const bw = inBook('fam', () => budgetLevels(monthKey(today0())).filter(b => b.lv));
-  const total = list.length + up.length + bw.length;
+  const stk = shareTicker();
+  const total = list.length + up.length + bw.length + (stk ? 1 : 0);
   if (!total) { el.innerHTML = state.readOnly ? '' : '<span class="lbl">공지</span><span class="txt muted">+ 공지 추가</span>'; return; }
   const dated = list.filter(n => n.until).map(n => ({ k:fromYmd(n.until)-today0(), t:(n.emoji ? n.emoji + ' ' : '') + n.text.split('\n')[0] }))
     .concat(up.map(x => ({ k:x.dd*864e5, t:`${annivIcon(x.a)}${annivTitle(x.a)} ${x.dd===0?'오늘':'D-'+x.dd}` })))
     .sort((a,b) => a.k - b.k);
-  const first = bw.length ? `${bw[0].lv >= 100 ? '⚠' : '💳'} ${bw[0].card} ${Math.round(bw[0].pct)}% 사용` : dated[0] ? dated[0].t : list[0].text.split('\n')[0];
+  const first = stk ? stk : bw.length ? `${bw[0].lv >= 100 ? '⚠' : '💳'} ${bw[0].card} ${Math.round(bw[0].pct)}% 사용` : dated[0] ? dated[0].t : list[0].text.split('\n')[0];
   el.innerHTML = `<span class="lbl">공지 ${total}</span><span class="txt">${esc(first)}</span>`;
 }
 function noticeView(){
@@ -1943,7 +2107,9 @@ function monthView(){
     const d = addDays(start, i), ds = ymd(d), hn = holidayName(ds);
     const evs = visibleEvents(ds), w = showWork() ? state.work[ds] : null;
     const red = d.getDay()===0 || hn;
-    let inner = `<span class="dn ${red?'sun':d.getDay()===6?'sat':''}"><b>${d.getDate()}</b></span>`;
+    const cy = cycDay(ds), sd = shareDay(ds);
+    let inner = `<span class="dn ${red?'sun':d.getDay()===6?'sat':''}"><b>${d.getDate()}</b>${cy ? `<i class="cy ${cy.kind}"></i>` : ''}</span>`;
+    if (sd && sd.kind === 'cond') inner += `<span class="cyx" title="다솜 컨디션 저하 예상">🌧 다솜</span>`;
     if (hn) inner += `<span class="hname">${esc(hn)}</span>`;
     const avs = annivsOn(ds);
     avs.slice(0,2).forEach(x => { inner += `<span class="av" style="--c:${annivColor(x.a)}">${annivIcon(x.a)}${esc(annivTitle(x.a))}</span>`; });
@@ -1984,6 +2150,8 @@ function dayView(){
   const ds = ymd(state.cursor), d = state.cursor, hn = holidayName(ds), type = dayType(ds);
   const w = state.work[ds];
   let h = `<div class="dayhero"><h2>${d.getMonth()+1}월 ${d.getDate()}일 ${WD[d.getDay()]}요일</h2><span class="pill ${type==='holiday'?'hol':''}">${esc(hn || TYPE_LABEL[type] + ' 근무표')}</span></div>`;
+  h += cycCard(ds);
+  { const sd = shareDay(ds); if (sd) h += `<div class="cycard share"><div class="grow"><b>${sd.kind === 'cond' ? '🌧 다솜 컨디션 저하 예상일' : WARN_MSG(sd.d)}</b><div class="help">${sd.kind === 'cond' ? '따뜻한 말 한마디, 디저트, 먼저 하는 설거지 효과 좋음' : '예상일이라 조금 달라질 수 있어요'}</div></div></div>`; }
   if (showWork()) {
     if (w && w.course !== '휴무') {
       const {row} = courseInfo(ds, w.course);
@@ -2037,6 +2205,7 @@ function renderPreview(){
     if (d.kind === 'anniv') { const a = d.a, o = a.month && a.day ? nextOcc(a) : null;
       return `<div class="pv"><span class="cbtn" style="--c:${annivColor(a)}">기념일</span><span class="pt">${annivIcon(a)}${esc(annivTitle(a))} · ${a.month&&a.day?esc(annivDateLabel(a)):'날짜 없음'}</span><span class="hint">${o ? `다음: ${fromYmd(o.date).getMonth()+1}/${fromYmd(o.date).getDate()}${annivCount(a,o.n)?' · '+annivCount(a,o.n):''}` : d.notes.join(' · ')}</span></div>`; }
     if (d.kind === 'money') return `<div class="pv"><span class="cbtn" style="--c:${d.type === 'in' ? 'var(--accent)' : d.type === 'save' ? 'var(--sat)' : 'var(--sun)'}">${TYPE_KO[d.type]}</span><span class="pt">${esc(d.merchant)} · ${d.amount ? won(d.amount) : '금액?'} · ${esc(d.card)} · ${esc(d.cat)}${d.inst ? ` · ${d.inst}개월` : ''}</span><span class="hint">${dLabel(d.date).replace(/^\d+월 /,'')}${d.notes.length ? ' · ' + esc(d.notes.join(' · ')) : ''}</span></div>`;
+    if (d.kind === 'cycle') return `<div class="pv"><span class="pd">${dLabel(d.date)}</span><span class="cbtn" style="--c:var(--cyc)">🌙</span><span class="pt">${d.act === 'end' ? '끝난 날' : '시작한 날'} 기록</span><span class="hint">${d.notes.length ? esc(d.notes[0]) : '🔒 나만 보여요'}</span></div>`;
     if (d.kind === 'notice') return `<div class="pv"><span class="cbtn" style="--c:var(--accent)">공지</span><span class="pt">${esc(d.text)}</span><span class="hint">${d.until ? dLabel(d.until)+'까지' : '기한 없음'}</span></div>`;
     if (d.kind === 'work') {
       const {row} = courseInfo(d.date, d.course);
@@ -2054,10 +2223,12 @@ async function addDrafts(){
       if (d.kind === 'anniv') { if (d.a.month && d.a.day) await api.addAnniv(d.a); continue; }
       if (d.kind === 'money') { if (d.amount) await api.addMoney({ type:d.type, amount:d.amount, inst:d.inst || 0, goal:d.goal || '', merchant:d.merchant, card:d.card, cat:d.cat, date:d.date, time:'', who:state.myWho || 'me', memo:'', cancelled:false, review:false, src:'manual' }); continue; }
       if (d.kind === 'notice') { await api.addNotice({ text:d.text, until:d.until }); continue; }
+      if (d.kind === 'cycle') { if (cycOwner()) { if (d.act === 'end') await cycEnd(d.date); else await cycStart(d.date); } continue; }
       if (d.kind === 'work') await api.setWork(d.date, { course:d.course });
       else await api.addEvent({ date:d.date, start:d.start||'', end:d.end||'', title:d.title, cat:catFromPeople(d.people), people:d.people, memo:'' });
     }
     $('#quick').value = ''; state.drafts = []; renderPreview(); autosize();
+    if (ds.length === 1 && ds[0].kind === 'cycle') { $('#quick').value = ''; state.drafts = []; renderPreview(); autosize(); return; }
     toast(ds.length > 1 ? `${ds.length}건 추가했어요` : ds[0].kind === 'notice' ? '공지를 올렸어요' : ds[0].kind === 'anniv' ? '기념일을 등록했어요' : ds[0].kind === 'money' ? '가계부에 추가했어요' : `${dLabel(ds[0].date)}에 추가했어요`);
     if (ds.length === 1 && ds[0].date) { state.cursor = fromYmd(ds[0].date); render(); }
   } catch(e){ fail(e); $('#addBtn').disabled = false; }
@@ -2274,6 +2445,11 @@ document.addEventListener('click', ev => {
   if (t.dataset.mtab) { state.mtab = t.dataset.mtab; renderView(); window.scrollTo(0, 0); return; }
   if (t.dataset.mdetail) { const md = t.dataset.mdetail; if (md.startsWith('flow|')) flowSheet(md.slice(5)); else detailSheet(md); return; }
   if (t.dataset.acct) { acctSheet(t.dataset.acct); return; }
+  if (t.dataset.cycStart) { if (cycOwner()) cycStart(t.dataset.cycStart).then(() => { if (!$('#sheet').hidden) cycSheet(); }).catch(fail); return; }
+  if (t.dataset.cycEnd) { if (cycOwner()) cycEnd(t.dataset.cycEnd).catch(fail); return; }
+  if (t.dataset.cycEdit) { cycEdit(t.dataset.cycEdit); return; }
+  if (t.hasAttribute('data-cyc-new')) { cycEdit(''); return; }
+  if (t.hasAttribute('data-cycsheet')) { if (cycOwner()) cycSheet(); return; }
   if (t.dataset.balance) { if (!state.readOnly) balanceSheet(t.dataset.balance); return; }
   if (t.hasAttribute('data-addfixed')) { editFixed(null); return; }
   if (t.dataset.fixed) { editFixed(t.dataset.fixed); return; }
