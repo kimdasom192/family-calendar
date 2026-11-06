@@ -840,7 +840,7 @@ async function bellSheet(){
   const ago = t => { const m = Math.round((Date.now() - t) / 60000); return m < 60 ? `${Math.max(1,m)}분 전` : m < 1440 ? `${Math.round(m/60)}시간 전` : `${Math.round(m/1440)}일 전`; };
   const who = id => state.members[id] ? catLabel(state.members[id]) : '가족';
   const BADGE = { new:['신규','b-new'], edit:['수정','b-edit'], del:['삭제','b-del'], alert:['목표','b-warn'], cyc:['알림','b-warn'] };
-  const bd = x => x.type === 'cycle' ? (x.to ? ['주의보','b-warn'] : ['🌙','b-new']) : x.act === 'alert' ? (x.lv >= 100 ? ['초과','b-del'] : x.lv >= 90 ? ['90%','b-warn'] : ['연결','b-new']) : (BADGE[x.act] || ['알림','b-edit']);
+  const bd = x => x.type === 'cycle' ? (x.to ? (String(x.id || '').startsWith('cyc_start') ? ['배려','b-new'] : ['주의보','b-warn']) : ['🌙','b-new']) : x.act === 'alert' ? (x.lv >= 100 ? ['초과','b-del'] : x.lv >= 90 ? ['90%','b-warn'] : ['연결','b-new']) : (BADGE[x.act] || ['알림','b-edit']);
   const link = x => {
     if (x.type === 'cycle') return x.to ? 'disabled' : 'data-cycsheet';
     if (x.act === 'alert') return 'data-gomoney';
@@ -854,7 +854,7 @@ async function bellSheet(){
   const counts = { new:0, edit:0, del:0, alert:0, cyc:0 }; items.forEach(x => { const k = x.type === 'cycle' ? 'cyc' : x.act; counts[k] = (counts[k]||0) + 1; });
   openSheet(`<div class="sh"><h3>새 소식</h3><button class="ghost" data-close>닫기</button></div>
     ${items.length ? `<div class="btns" style="gap:6px">${['new','edit','del','alert','cyc'].filter(k => counts[k]).map(k => `<span class="badge ${BADGE[k][1]}">${BADGE[k][0]} ${counts[k]}</span>`).join('')}</div>
-    <div class="notices news" style="margin:0">${items.map(x => `<button class="nitem" ${link(x)}><span class="nt"><span class="badge ${bd(x)[1]}">${bd(x)[0]}</span> <b>${esc(x.type === 'cycle' ? (x.to ? '⚠️ 다솜주의보' : '🌙 내 주기') : x._p ? '🔒 내 가계부' : x.by === 'system' ? '가계부' : who(x.by))}</b>${x.type === 'budget' || x.type === 'cycle' ? '' : ' · ' + (KIND[x.type]||'')}${x.date ? ` · ${dLabel(x.date)}` : ''}<br><span style="${x.act==='del'?'text-decoration:line-through;color:var(--muted)':''}">${esc(x.title)}</span>${(x.changes||[]).length ? `<span class="chg">${x.changes.map(c => esc(c)).join('<br>')}</span>` : ''}</span><span class="nd">${ago(x.at)}</span></button>`).join('')}</div>
+    <div class="notices news" style="margin:0">${items.map(x => `<button class="nitem" ${link(x)}><span class="nt"><span class="badge ${bd(x)[1]}">${bd(x)[0]}</span> <b>${esc(x.type === 'cycle' ? (x.to ? (String(x.id || '').startsWith('cyc_start') ? '🌧 배려 모드' : '⚠️ 다솜주의보') : '🌙 내 주기') : x._p ? '🔒 내 가계부' : x.by === 'system' ? '가계부' : who(x.by))}</b>${x.type === 'budget' || x.type === 'cycle' ? '' : ' · ' + (KIND[x.type]||'')}${x.date ? ` · ${dLabel(x.date)}` : ''}<br><span style="${x.act==='del'?'text-decoration:line-through;color:var(--muted)':''}">${esc(x.title)}</span>${(x.changes||[]).length ? `<span class="chg">${x.changes.map(c => esc(c)).join('<br>')}</span>` : ''}</span><span class="nd">${ago(x.at)}</span></button>`).join('')}</div>
     <div class="btns"><button class="primary" data-seenall>모두 확인</button></div>`
     : '<p style="margin:0;color:var(--muted)">새로 바뀐 내용이 없어요.</p>'}`);
 }
@@ -1070,7 +1070,9 @@ function cycDay(ds){
   return null;
 }
 async function saveCyc(){ await db.doc(bp('config/cycle', 'mine')).set({ periods:cyc.periods, settings:cyc.settings, at:Date.now() }); }
-async function cycStart(ds){ const p = cycPred(); if (p && p.ongoing && dd0(p.last.start, ds) < 10 && dd0(p.last.start, ds) >= 0) { toast('이미 기록 중이에요'); return; } cyc.periods.push({ id:'c' + Date.now().toString(36), start:ds, end:'', flow:'', sym:[], memo:'' }); await saveCyc(); toast('🌙 시작일을 기록했어요'); }
+async function cycStart(ds){ const p = cycPred(); if (p && p.ongoing && dd0(p.last.start, ds) < 10 && dd0(p.last.start, ds) >= 0) { toast('이미 기록 중이에요'); return; } cyc.periods.push({ id:'c' + Date.now().toString(36), start:ds, end:'', flow:'', sym:[], memo:'' }); await saveCyc(); toast('🌙 시작일을 기록했어요');
+  // 진우님 🔔에 한 번: 최근 이틀 안에 시작한 기록일 때만
+  if ((cyc.settings || {}).share !== false && dd0(ds, ymd(today0())) <= 1 && dd0(ds, ymd(today0())) >= 0) { try { const ref = db.doc('log/cyc_start_' + ds); if (!(await ref.get()).exists) await ref.set({ act:'alert', type:'cycle', lv:90, ref:'', date:ds, to:['hus'], changes:[`🌧 ${dd0(ds, ymd(today0())) ? '어제' : '오늘'}부터 다솜 컨디션 저하 · 배려 모드 ON 🫶 (따뜻한 말 + 디저트 추천)`], by:'system', at:Date.now() }); } catch(e){} } }
 async function cycEnd(ds){ const ps = cyc.periods.filter(p => p.start <= ds).sort((a, b) => b.start.localeCompare(a.start)); const r = ps[0]; if (!r || dd0(r.start, ds) > 14) { toast('먼저 시작일을 기록해 주세요'); return; } r.end = ds; await saveCyc(); toast('🌙 끝난 날을 기록했어요'); }
 /* 진우님 쪽에 보낼 것: 날짜와 "컨디션" 표시만 (기록 자체는 안 보냄) */
 let cycShareSig = '';
