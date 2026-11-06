@@ -95,6 +95,10 @@ export async function run(db, send, now = new Date(), log = console.log){
   }
 
   const annivs = await db.list('annivs');
+  // 다솜 컨디션 표시 (실제 기간 · 예정일 지나 미뤄지는 중) — 날마다 아침 한 번
+  const share = await db.get('share/cycle');
+  const condToday = share && ((share.cond || []).some(c => td >= c.from && td <= c.to) || (share.roll && td >= share.roll.from && td <= share.roll.until));
+  const startedToday = condToday && !!(await db.get(`log/cyc_start_${td}`));
   let sentTotal = 0;
   for (const uid of Object.keys(members)) {
     const who = members[uid];
@@ -126,6 +130,10 @@ export async function run(db, send, now = new Date(), log = console.log){
         sent[key] = now.getTime();
         msgs.push({ title:`${annivIcon(a)}${annivTitle(a, L)}`, body:d === 0 ? `오늘이에요 · ${dLabel(ds)}` : `D-${d} · ${dLabel(ds)}${d === 30 ? ' (한 달 남았어요)' : ''}`, tag:'anniv', at:now.getTime() });
       }
+    }
+    if (condToday && daytime && !startedToday && (share.to || []).includes(who)) {
+      const key = `cond:${td}`;
+      if (!sent[key]) { sent[key] = now.getTime(); msgs.push({ title:'🌧 다솜 컨디션', body:'다솜 컨디션 저하 중 · 따뜻한 말 한마디 + 디저트 효과 좋음 🍰', tag:'cond', at:now.getTime() }); }
     }
     // 연결 시험
     let testAt = st.testAt || 0;
