@@ -1,5 +1,5 @@
 // 앱 화면을 기기에 저장해서 빨리 열리게 해요. 항상 새 버전을 먼저 받아 오고, 인터넷이 없을 때만 저장본을 써요.
-const CACHE = 'family-cal-v25';
+const CACHE = 'family-cal-v26';
 const SHELL = ['./', './index.html', './firebase-config.js', './manifest.webmanifest', './icons/icon-192.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
@@ -7,4 +7,16 @@ self.addEventListener('fetch', e => {
   const u = new URL(e.request.url);
   if (e.request.method !== 'GET' || u.origin !== location.origin) return;
   e.respondWith(fetch(e.request).then(res => { const copy = res.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); return res; }).catch(() => caches.match(e.request).then(m => m || caches.match('./index.html'))));
+});
+
+// 📱 휴대폰 알림: GitHub Actions가 보낸 알림을 화면에 띄워요
+self.addEventListener('push', e => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch(_) { d = { body:e.data ? e.data.text() : '' }; }
+  e.waitUntil(self.registration.showNotification(d.title || '우리집 가족달력', { body:d.body || '', icon:'./icons/icon-192.png', tag:d.tag === 'test' ? 'test' : undefined, data:{ url:d.url || './' } }));
+});
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  const url = new URL((e.notification.data && e.notification.data.url) || './', self.registration.scope).href;
+  e.waitUntil(clients.matchAll({ type:'window', includeUncontrolled:true }).then(ws => { for (const w of ws) if (w.url.startsWith(self.registration.scope) && 'focus' in w) return w.focus(); return clients.openWindow(url); }));
 });

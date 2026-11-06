@@ -108,6 +108,7 @@ header{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var
 .chips.wrap{flex-wrap:wrap;overflow:visible}
 .tgl{display:flex;gap:8px;align-items:flex-start;padding:8px 0;font-size:14px}
 .tgl+.tgl{border-top:1px solid var(--line)}
+.pushcard{border-color:var(--line);background:var(--surface2)}
 .bookhelp{margin:-2px 0 10px}
 .mstats.inst3{grid-template-columns:1.12fr 1.12fr .76fr}
 .mstats.six{grid-template-columns:repeat(3,minmax(0,1fr))}
@@ -1178,6 +1179,42 @@ function cycEdit(id){
   });
 }
 
+/* ===== 📱 휴대폰 알림 (웹 푸시) — 보내는 일은 GitHub Actions가 5분마다 해요 ===== */
+const VAPID_PUBLIC = 'BDL11cuUbIlZJJeRCVAWP7rU2n_lhxoU2c87DN04eLcLW_GvMfoOvdYa2pegSTK61tHlq0eZSPAagC5ica7hn30';
+function pushSupported(){ return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window; }
+const b64u = s => { const b = atob((s + '='.repeat((4 - s.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(b, c => c.charCodeAt(0)); };
+async function pushSub(){ try { const reg = await navigator.serviceWorker.ready; return await reg.pushManager.getSubscription(); } catch(e){ return null; } }
+function pushBlock(){ return `<div class="cycard pushcard"><div class="grow"><b>📱 휴대폰 알림</b><div class="help" id="push_st">확인 중…</div></div><div class="cybtns" id="push_btns"></div></div>`; }
+async function pushRefresh(){
+  const st = $('#push_st'), bt = $('#push_btns'); if (!st || !bt) return;
+  if (!pushSupported()) { st.textContent = '이 브라우저는 휴대폰 알림을 지원하지 않아요. 홈 화면에 추가한 앱이나 크롬에서 열어 주세요.'; bt.innerHTML = ''; return; }
+  if (!db || !me) { st.textContent = '가족 코드로 들어온 뒤 켤 수 있어요.'; bt.innerHTML = ''; return; }
+  if (Notification.permission === 'denied') { st.textContent = '알림이 차단돼 있어요. 휴대폰 설정 → 애플리케이션 → 이 앱(또는 크롬) → 알림에서 허용해 주세요.'; bt.innerHTML = ''; return; }
+  const sub = await pushSub();
+  st.textContent = sub ? '켜져 있어요. 새 소식이 생기면 5~10분 안에 이 휴대폰으로 알려 드려요.' : '꺼져 있어요. 켜면 앱을 닫아 둬도 알림이 와요.';
+  bt.innerHTML = sub ? '<button class="ghost" data-push="test">시험 알림</button><button class="ghost" data-push="off">끄기</button>' : '<button class="primary" data-push="on">휴대폰 알림 켜기</button>';
+}
+async function pushSave(fn){ const ref = db.doc(`private/${me}/config/push`); const snap = await ref.get(); const cur = snap.exists ? snap.data() : {}; await ref.set(fn(cur), { merge:true }); }
+async function pushAct(k){
+  try {
+    if (k === 'on') {
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') { toast('알림을 허용해야 켤 수 있어요'); pushRefresh(); return; }
+      const reg = await navigator.serviceWorker.ready;
+      const sub = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly:true, applicationServerKey:b64u(VAPID_PUBLIC) });
+      const j = sub.toJSON();
+      await pushSave(cur => ({ subs:(cur.subs || []).filter(x => x.endpoint !== j.endpoint).concat({ endpoint:j.endpoint, keys:j.keys, ua:navigator.userAgent.slice(0, 90), at:Date.now() }), who:state.myWho || '', testAt:Date.now() }));
+      toast('켰어요! 5~10분 안에 시험 알림이 와요');
+    } else if (k === 'test') {
+      await pushSave(() => ({ testAt:Date.now() })); toast('5~10분 안에 시험 알림이 와요');
+    } else if (k === 'off') {
+      const sub = await pushSub(); const ep = sub && sub.endpoint;
+      if (sub) await sub.unsubscribe();
+      await pushSave(cur => ({ subs:(cur.subs || []).filter(x => x.endpoint !== ep) })); toast('이 휴대폰 알림을 껐어요');
+    }
+  } catch(e){ toast('알림 설정을 하지 못했어요: ' + (e.message || e)); }
+  pushRefresh();
+}
 async function importData(file){
   const F = FB.F, fs = FB.fs;
   const j = JSON.parse(await file.text());
@@ -2242,6 +2279,7 @@ let sheetHashed = false;
 function openSheet(html, bind){
   $('#sheetBody').innerHTML = html; $('#sheet').hidden = false; $('#scrim').hidden = false; $('#sheet').scrollTop = 0;
   bind && bind($('#sheetBody'));
+  if ($('#push_st')) pushRefresh();
   if (!sheetHashed) { sheetHashed = true; try { location.hash = 'edit'; } catch(e){} }
 }
 function closeSheet(fromHash){
@@ -2364,6 +2402,7 @@ function settings(){
   const extra = Object.entries(cfg.holidays||{}).map(([d,n]) => `${d} ${n}`).join('\n');
   openSheet(`
     <div class="sh"><h3>설정 · 근무표</h3><button class="ghost" data-close>닫기</button></div>
+    ${pushBlock()}
     <div class="row2"><div class="fld"><label for="s_me">내 이름</label><input id="s_me" value="${esc(cfg.names.me)}"></div><div class="fld"><label for="s_hus">남편 이름</label><input id="s_hus" value="${esc(cfg.names.hus)}"></div></div>
     <div class="row2"><div class="fld"><label for="s_k1">첫째 이름</label><input id="s_k1" value="${esc(cfg.names.kid1)}"></div><div class="fld"><label for="s_k2">둘째 이름</label><input id="s_k2" value="${esc(cfg.names.kid2)}"></div></div>
     <div class="fld"><label for="s_sur">성 (이름 앞에 붙여 써도 알아보게)</label><input id="s_sur" value="${esc(cfg.names.surname||'')}"></div>
@@ -2447,6 +2486,7 @@ document.addEventListener('click', ev => {
   if (t.dataset.mtab) { state.mtab = t.dataset.mtab; renderView(); window.scrollTo(0, 0); return; }
   if (t.dataset.mdetail) { const md = t.dataset.mdetail; if (md.startsWith('flow|')) flowSheet(md.slice(5)); else detailSheet(md); return; }
   if (t.dataset.acct) { acctSheet(t.dataset.acct); return; }
+  if (t.dataset.push) { pushAct(t.dataset.push); return; }
   if (t.dataset.cycStart) { if (cycOwner()) cycStart(t.dataset.cycStart).then(() => { if (!$('#sheet').hidden) cycSheet(); }).catch(fail); return; }
   if (t.dataset.cycEnd) { if (cycOwner()) cycEnd(t.dataset.cycEnd).catch(fail); return; }
   if (t.dataset.cycEdit) { cycEdit(t.dataset.cycEdit); return; }
