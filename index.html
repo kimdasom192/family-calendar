@@ -109,6 +109,21 @@ header{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var
 .tgl{display:flex;gap:8px;align-items:flex-start;padding:8px 0;font-size:14px}
 .tgl+.tgl{border-top:1px solid var(--line)}
 .pushcard{border-color:var(--line);background:var(--surface2)}
+.phrow{display:flex;gap:4px;margin-top:4px;align-items:center}
+.phrow img{width:34px;height:34px;object-fit:cover;border-radius:6px;border:1px solid var(--line)}
+.phrow span{font-size:12px;color:var(--muted)}
+.phs{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.ph{position:relative}
+.phimg{padding:0;border:0;background:none;display:block}
+.phimg img,.phadd{width:76px;height:76px;border-radius:10px;object-fit:cover;display:block;border:1px solid var(--line)}
+.phadd{display:flex;align-items:center;justify-content:center;text-align:center;font-size:12px;color:var(--muted);cursor:pointer;background:var(--surface2);line-height:1.3}
+.phx{position:absolute;top:-6px;right:-6px;width:24px;height:24px;border-radius:50%;border:0;background:var(--ink);color:var(--bg);font-size:12px;padding:0}
+.phview{position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center}
+.phview img{max-width:100%;max-height:100%;object-fit:contain}
+.phbar{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:center;padding:12px 16px;color:#fff;font-size:14px}
+.phbar button{background:rgba(255,255,255,.15);color:#fff;border:0;border-radius:999px;padding:8px 14px;font:inherit}
+.phnav{position:absolute;top:50%;transform:translateY(-50%);width:44px;height:64px;border:0;background:rgba(255,255,255,.12);color:#fff;font-size:30px;border-radius:10px}
+.phnav.prev{left:8px}.phnav.next{right:8px}
 .bookhelp{margin:-2px 0 10px}
 .mstats.inst3{grid-template-columns:1.12fr 1.12fr .76fr}
 .mstats.six{grid-template-columns:repeat(3,minmax(0,1fr))}
@@ -1662,6 +1677,7 @@ async function processInbox(docs, bk){
       if (p.balance != null && p.card && p.card !== '현금' && isAcct(p.card, bk)) { const cur = (books[bk].balances || {})[p.card]; const at = x.at || Date.now(); if (!cur || !(cur.at > at)) { try { await db.doc(P('config/balances')).set({ [p.card]:{ bal:p.balance, at, src:'auto' } }, { merge:true }); } catch(e){} } }
       // 광고·안내처럼 금액도 결제 말도 없는 알림은 버리기
       if (!p.amount && !/[가-힣A-Za-z0-9]/.test((p.raw || '').replace(/\{[^{}]*\}|lv=t|not_\w+|notification|[{}|\/]/g, ''))) { await db.doc(P('inbox/' + id)).delete(); await db.collection(P('log')).add({ act:'alert', type:'budget', lv:0, ref:'', date:'', changes:[bk === 'mine' ? '내 휴대폰에서 보낸 시험 알림이 잘 도착했어요.' : '진우 님 휴대폰에서 보낸 시험 알림이 잘 도착했어요.'], title:'📱 카드 알림 연결 확인', at:Date.now(), by:'system' }); continue; }
+      const bkK = bankKind(p.raw, bk); if (bkK && bkK.skip) { await db.doc(P('inbox/' + id)).delete(); continue; }
       if (!p.amount && !/(승인|결제|입금|출금|취소|이체|사용)/.test(p.raw)) { await db.doc(P('inbox/' + id)).delete(); continue; }
       // 카드값 결제·본인 계좌 이체는 이미 카드 쪽에 있으니 빼기
       if (isAcct(p.card, bk) && p.card !== '현금') { const own = ((state.config.names.surname || '') + (state.config.names[bk === 'mine' ? 'me' : 'hus'] || '')).trim();
@@ -1682,19 +1698,44 @@ async function processInbox(docs, bk){
       let type = p.type === 'cancel' ? 'in' : p.type;
       let merchant = (p.type === 'cancel' ? '취소 ' : '') + (p.merchant || (type === 'in' ? '입금' : '가맹점 확인 필요'));
       // 적금처럼 '저축' 고정지출과 맞는 출금은 저축으로 기록
-      const sv = type === 'out' && (books[bk].fixed || []).find(f => f.type === 'save' && f.match && p.raw.includes(f.match));
+      const sv = bkK && bkK.save && type !== 'in' ? { id:'', name:bkK.save } : type === 'out' && (books[bk].fixed || []).find(f => f.type === 'save' && f.match && p.raw.includes(f.match));
       if (sv) { type = 'save'; merchant = sv.name; }
       await db.doc(P('ledger/' + id)).set({ date:p.date, time:p.time, amount:p.amount || 0, type, merchant, card:p.card || '기타', who:bk === 'mine' ? (state.myWho || 'me') : 'hus',
-        cat: sv ? '저축' : p.type === 'cancel' ? '기타' : inBook(bk, () => guessCat(p.merchant, type)), memo:p.installment, inst:p.inst || 0, src:'auto', raw:p.raw, review:!p.amount, cancelled:false, at:Date.now(), by:'system', ...(sv ? { fixedId:sv.id } : {}) });
+        cat: sv ? '저축' : p.type === 'cancel' ? '기타' : inBook(bk, () => guessCat(p.merchant, type)), memo:p.installment, inst:p.inst || 0, src:'auto', raw:p.raw, review:!p.amount, cancelled:false, at:Date.now(), by:'system', ...(sv && sv.id ? { fixedId:sv.id } : {}) });
       await db.doc(P('inbox/' + id)).delete();
     }
   } catch(e){}
   inboxBusyBk[bk] = false;
 }
 const repaired = {};
+/* 은행 알림 중 '거래가 아닌 것'과 '내 적금으로 옮긴 돈' 가려내기 */
+const SAVE_WORD = /(적금|저금통|세이프박스|예금|청약)/;
+function bankKind(raw, bk){
+  const r = String(raw || '');
+  if (/모임통장/.test(r)) return { skip:'모임통장' };
+  if (/(예정|예약|알려드려요|안내드려요|퀴즈|이벤트|혜택|광고)/.test(r) && !/(되었어요|됐어요|완료)/.test(r)) return { skip:'안내' };
+  // "26주적금에 24,000원이 입금되었어요!" — 적금 쪽 입금 알림(같은 돈의 반대편)
+  if (SAVE_WORD.test(r) && /(입금되었|입금됐|이\s*입금|에\s*[0-9,]+\s*원이?\s*(입금|저축))/.test(r) && !/→/.test(r)) return { skip:'적금입금' };
+  // "입출금통장 → 26주적금 24,000원" — 내 적금으로 옮김 = 저축
+  const mv = r.match(/→\s*([^\n]*?(적금|저금통|세이프박스|예금|청약))/);
+  if (mv) return { save:mv[1].trim() };
+  return null;
+}
 async function repairAuto(bk){
   if (!db || local) return;
+  const lim = ymd(addDays(today0(), -30));
   for (const x of books[bk].ledger) {
+    if (x.src === 'auto' && x.raw && (x.date || '') >= lim && !repaired['k' + x.id]) {
+      repaired['k' + x.id] = 1;
+      const k = bankKind(x.raw, bk);
+      try {
+        if (k && k.skip) { await db.doc(bp('ledger/' + x.id, bk)).delete(); continue; }
+        if (x.type === 'out') {
+          const f = k && k.save ? { id:'', name:k.save } : (books[bk].fixed || []).find(f => f.type === 'save' && f.match && x.raw.includes(f.match));
+          if (f) { await db.doc(bp('ledger/' + x.id, bk)).update({ type:'save', cat:'저축', merchant:f.name, ...(f.id ? { fixedId:f.id } : {}) }); continue; }
+        }
+      } catch(e){}
+    }
     if (x.src !== 'auto' || !x.review || +x.amount || !x.raw || repaired[x.id]) continue;
     const p = parseNotice('', '', x.raw, x.at, bk); if (!p.amount) continue;
     repaired[x.id] = 1;
@@ -2179,7 +2220,7 @@ function itemsHtml(ds){
     h += `<button class="item work" data-work="${ds}"><span class="tm">${row && w.course!=='휴무' ? `${row.s}<br>${row.e}` : ''}</span><span class="it"><span class="tag" style="--c:${catVar('work')}"><span class="dot" style="--c:${catVar('work')}"></span>${esc(catLabel('work'))}</span><span class="nm">${esc(workText(ds,w))}</span>${row && w.course!=='휴무' ? `<span class="memo">${dur(row.s,row.e)} 근무</span>`:''}</span></button>`;
   }
   visibleEvents(ds).forEach(e => {
-    h += `<button class="item" data-ev="${esc(e.id)}"><span class="tm">${e.start ? fmtTime(e.start) + (e.end ? `<br>~ ${fmtTime(e.end)}` : '') : '하루 종일'}</span><span class="it"><span class="tag" style="--c:${evColors(e)[0]}">${evDots(e)}${esc(evLabel(e))}</span><span class="nm">${esc(evTitle(e))}${isNew(e)?'<span class="newtag">NEW</span>':''}</span>${e.memo ? `<span class="memo">${esc(e.memo)}</span>`:''}</span></button>`;
+    h += `<button class="item" data-ev="${esc(e.id)}"><span class="tm">${e.start ? fmtTime(e.start) + (e.end ? `<br>~ ${fmtTime(e.end)}` : '') : '하루 종일'}</span><span class="it"><span class="tag" style="--c:${evColors(e)[0]}">${evDots(e)}${esc(evLabel(e))}</span><span class="nm">${esc(evTitle(e))}${isNew(e)?'<span class="newtag">NEW</span>':''}</span>${e.memo ? `<span class="memo">${esc(e.memo)}</span>`:''}${phStrip(e)}</span></button>`;
   });
   return h;
 }
@@ -2214,7 +2255,7 @@ function dayView(){
   if (ai) h += `<div class="dcard" style="margin-bottom:10px"><div class="items">${ai}</div></div>`;
   const evs = visibleEvents(ds);
   h += `<div class="sec">일정 ${evs.length}건</div><div class="dcard"><div class="items">`;
-  h += evs.length ? evs.map(e => `<button class="item" data-ev="${esc(e.id)}"><span class="tm">${e.start ? fmtTime(e.start) + (e.end ? `<br>~ ${fmtTime(e.end)}` : '') : '하루 종일'}</span><span class="it"><span class="tag" style="--c:${evColors(e)[0]}">${evDots(e)}${esc(evLabel(e))}</span><span class="nm">${esc(evTitle(e))}${isNew(e)?'<span class="newtag">NEW</span>':''}</span>${e.memo?`<span class="memo">${esc(e.memo)}</span>`:''}</span></button>`).join('')
+  h += evs.length ? evs.map(e => `<button class="item" data-ev="${esc(e.id)}"><span class="tm">${e.start ? fmtTime(e.start) + (e.end ? `<br>~ ${fmtTime(e.end)}` : '') : '하루 종일'}</span><span class="it"><span class="tag" style="--c:${evColors(e)[0]}">${evDots(e)}${esc(evLabel(e))}</span><span class="nm">${esc(evTitle(e))}${isNew(e)?'<span class="newtag">NEW</span>':''}</span>${e.memo?`<span class="memo">${esc(e.memo)}</span>`:''}${phStrip(e)}</span></button>`).join('')
     : `<div class="empty">아직 일정이 없어요. 위 버튼으로 자세히 넣거나, 아래 입력칸에 "3시 병원"처럼 적으면 이 날에 들어가요.</div>`;
   return h + '</div></div>';
 }
@@ -2348,6 +2389,7 @@ function editEvent(id, ds){
     <div class="fld"><label for="f_date">날짜</label><input id="f_date" type="date" value="${e.date}" ${dis}></div>
     <div class="row2"><div class="fld"><label for="f_s">시작 (비우면 하루 종일)</label><input id="f_s" type="time" value="${e.start||''}" ${dis}></div><div class="fld"><label for="f_e">종료</label><input id="f_e" type="time" value="${e.end||''}" ${dis}></div></div>
     <div class="fld"><label for="f_memo">메모</label><textarea id="f_memo" rows="4" placeholder="장소, 준비물, 연락처 등" ${dis}>${esc(e.memo||'')}</textarea></div>
+    <div class="fld"><label>사진 <span class="help">(최대 ${PH_MAX}장 · 누르면 크게 보여요)</span></label><div class="phs" id="f_ph"></div></div>
     ${ro?'':`<div class="btns"><button class="primary" id="f_save">${isNew ? '추가' : '저장'}</button>${isNew ? '' : '<button class="danger" id="f_del">삭제</button>'}</div>`}`,
   root => {
     let people = peopleOf(e).filter(p => PERSONS.includes(p));
@@ -2361,15 +2403,70 @@ function editEvent(id, ds){
       who();
     }));
     root.querySelector('[data-allp]').addEventListener('click', () => { people = PERSONS.slice(); who(); });
+    const ph = phEditor(root.querySelector('#f_ph'), e.photos || [], ro);
     if (ro) return;
     root.querySelector('#f_save').addEventListener('click', async () => {
       const title = root.querySelector('#f_title').value.trim();
       if (!title && !getEmo()) { root.querySelector('#f_title').focus(); return; }
       const ne = { date:root.querySelector('#f_date').value || e.date, start:root.querySelector('#f_s').value, end:root.querySelector('#f_e').value, title: title || '일정', emoji:getEmo(), cat:catFromPeople(people), people, memo:root.querySelector('#f_memo').value.trim() };
+      const sb = root.querySelector('#f_save'); sb.disabled = true; if (ph.pending()) sb.textContent = '사진 올리는 중…';
+      try { ne.photos = await ph.commit(); } catch(err){ sb.disabled = false; sb.textContent = isNew ? '추가' : '저장'; fail(err); return; }
+      if (!ne.photos.length) delete ne.photos;
       try { isNew ? await api.addEvent(ne) : await api.setEvent(id, ne); closeSheet(); toast(isNew ? `${dLabel(ne.date)}에 추가했어요` : '저장했어요'); } catch(err){ fail(err); }
     });
-    const dl = root.querySelector('#f_del'); if (dl) armDelete(dl, async () => { try { await api.delEvent(id); closeSheet(); toast('삭제했어요'); } catch(err){ fail(err); } });
+    const dl = root.querySelector('#f_del'); if (dl) armDelete(dl, async () => { try { await api.delEvent(id); (e.photos || []).forEach(p => db && db.doc('photos/' + p.id).delete().catch(() => {})); closeSheet(); toast('삭제했어요'); } catch(err){ fail(err); } });
   });
+}
+/* ===== 📷 일정 사진: 원본은 photos/<id>에 따로, 일정에는 작은 미리보기만 ===== */
+const PH_MAX = 4;
+function phStrip(e){ const ps = e.photos || []; if (!ps.length) return ''; return `<span class="phrow">${ps.slice(0, 4).map(p => `<img src="${p.th}" alt="" loading="lazy">`).join('')}${ps.length > 4 ? `<span>+${ps.length - 4}</span>` : ''}</span>`; }
+function loadImg(file){ return new Promise((res, rej) => { const u = URL.createObjectURL(file); const im = new Image(); im.onload = () => { res(im); }; im.onerror = () => rej(new Error('사진을 읽지 못했어요')); im.src = u; }); }
+function shrink(im, max, q){ const r = Math.min(1, max / Math.max(im.naturalWidth, im.naturalHeight)); const c = document.createElement('canvas'); c.width = Math.round(im.naturalWidth * r); c.height = Math.round(im.naturalHeight * r); const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(im, 0, 0, c.width, c.height); return c.toDataURL('image/jpeg', q); }
+async function makePhoto(file){
+  const im = await loadImg(file);
+  let full = shrink(im, 1600, 0.75);
+  for (const [m, q] of [[1400, 0.68], [1200, 0.62], [1000, 0.58], [800, 0.55]]) { if (full.length < 900000) break; full = shrink(im, m, q); }
+  return { th:shrink(im, 220, 0.6), full };
+}
+function phViewer(list, i){
+  let k = i;
+  const ov = document.createElement('div'); ov.className = 'phview'; ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-label', '사진 보기');
+  const show = async () => {
+    const p = list[k];
+    ov.innerHTML = `<img src="${p.full || p.th}" alt="사진 ${k + 1}"><div class="phbar"><span>${k + 1} / ${list.length}</span><button data-x>닫기 ✕</button></div>${list.length > 1 ? '<button class="phnav prev" data-p aria-label="이전 사진">‹</button><button class="phnav next" data-n aria-label="다음 사진">›</button>' : ''}`;
+    if (!p.full && p.id && db) { try { const s = await db.doc('photos/' + p.id).get(); if (s.exists && list[k] === p) { p.full = s.data().data; ov.querySelector('img').src = p.full; } } catch(e){} }
+  };
+  ov.addEventListener('click', ev => { ev.stopPropagation(); const t = ev.target; if (t.closest('[data-p]')) { k = (k - 1 + list.length) % list.length; show(); } else if (t.closest('[data-n]')) { k = (k + 1) % list.length; show(); } else if (t.closest('[data-x]') || t === ov) ov.remove(); });
+  document.body.appendChild(ov); show();
+}
+function phEditor(box, init, ro){
+  let list = init.map(p => ({ ...p })); const removed = [];
+  const draw = () => {
+    box.innerHTML = list.map((p, i) => `<span class="ph"><button type="button" class="phimg" data-phv="${i}" aria-label="사진 ${i + 1} 크게 보기"><img src="${p.th}" alt=""></button>${ro ? '' : `<button type="button" class="phx" data-phx="${i}" aria-label="사진 ${i + 1} 빼기">✕</button>`}</span>`).join('')
+      + (ro || list.length >= PH_MAX ? '' : `<label class="phadd"><input type="file" accept="image/*" multiple hidden><span>＋<br>사진</span></label>`)
+      + (ro && !list.length ? '<span class="help">사진이 없어요</span>' : '');
+    box.querySelectorAll('[data-phv]').forEach(b => b.addEventListener('click', ev => { ev.stopPropagation(); phViewer(list, +b.dataset.phv); }));
+    box.querySelectorAll('[data-phx]').forEach(b => b.addEventListener('click', ev => { ev.stopPropagation(); const [p] = list.splice(+b.dataset.phx, 1); if (p.id) removed.push(p.id); draw(); }));
+    const inp = box.querySelector('input[type=file]');
+    if (inp) inp.addEventListener('change', async () => {
+      if (!db || local) { toast('가족 코드로 들어온 뒤 사진을 넣을 수 있어요'); return; }
+      const files = [...inp.files].slice(0, PH_MAX - list.length);
+      for (const f of files) { try { list.push({ ...(await makePhoto(f)), tmp:true }); draw(); } catch(e){ toast(e.message); } }
+    });
+  };
+  draw();
+  return {
+    pending: () => list.some(p => p.tmp),
+    async commit(){
+      const out = [];
+      for (const p of list) {
+        if (p.tmp) { const ref = await db.collection('photos').add({ data:p.full, at:Date.now(), by:me || '' }); out.push({ id:ref.id, th:p.th }); }
+        else out.push({ id:p.id, th:p.th });
+      }
+      removed.forEach(id => db.doc('photos/' + id).delete().catch(() => {}));
+      return out;
+    }
+  };
 }
 function editWork(ds){
   if (state.readOnly) return;
@@ -2579,6 +2676,19 @@ try { history.replaceState(null, '', '#' + viewHash()); } catch(e){}
 
 boot();
 if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); }); }
+/* 휴대폰에 오래 켜 둔 앱도 새 버전을 받도록: 화면에 돌아올 때·30분마다 확인 */
+const APP_VER = 'family-cal-v28';
+async function checkUpdate(){
+  try {
+    const t = await (await fetch('sw.js?ts=' + Date.now(), { cache:'no-store' })).text();
+    const v = (t.match(/CACHE = '([^']+)'/) || [])[1];
+    if (!v || v === APP_VER) return;
+    const busy = !$('#sheet').hidden || /^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement || {}).tagName || '') || ($('#quick') && $('#quick').value);
+    if (!busy) location.reload(); else setTimeout(checkUpdate, 60e3);
+  } catch(e){}
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkUpdate(); });
+setInterval(checkUpdate, 30 * 60e3);
 })();
 </script>
 </body>
