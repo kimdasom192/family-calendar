@@ -34,13 +34,17 @@ const cases = [
   T('ALLOW',null,'create','inbox/i1',null,{key:KEY,app:'하나은행',text:'출금 1,000원'}), T('DENY',null,'create','inbox/i1',null,{key:'wrong',app:'a',text:'t'}), T('DENY',null,'get','events/e1',{people:['me']}),
   T('DENY','me','get','private/u_me/inbox/x',{},null,'u_hus'),
 ];
-const res = await api(`projects/${P}:test`, { method:'POST', body:JSON.stringify({ source:{ files:[{ name:'firestore.rules', content:src }] }, testSuite:{ testCases:cases } }) });
+// 새 규칙을 먼저 만들어(아직 적용 전) 문법을 확인하고, 그 규칙으로 시험해요
+const rs = await api(`projects/${P}/rulesets`, { method:'POST', body:JSON.stringify({ source:{ files:[{ name:'firestore.rules', content:src }] } }) });
+console.log('새 규칙 만듦(적용 전):', rs.name.split('/').pop());
+let res;
+try { res = await api(`${rs.name}:test`, { method:'POST', body:JSON.stringify({ testSuite:{ testCases:cases } }) }); }
+catch(e){ console.log('시험 권한 없음 →', String(e.message).slice(0, 120)); if (!process.argv.includes('--no-test')) process.exit(1); res = { testResults:[] }; }
 if (res.issues && res.issues.length) { console.log('문법 문제:', JSON.stringify(res.issues).slice(0, 800)); process.exit(1); }
-let bad = 0; (res.testResults || []).forEach((r, i) => { if (r.state !== 'SUCCESS') { bad++; const c = cases[i]; console.log('실패', i, c.expectation, c.request.auth && c.request.auth.token.email, c.request.method, c.request.path.replace(D, ''), JSON.stringify(r.debugMessages || r.errorPosition || '').slice(0, 200)); } });
-console.log(`시험 ${cases.length}개 중 통과 ${cases.length - bad}개`);
+let bad = 0; if (res.testResults && res.testResults.length) (res.testResults || []).forEach((r, i) => { if (r.state !== 'SUCCESS') { bad++; const c = cases[i]; console.log('실패', i, c.expectation, c.request.auth && c.request.auth.token.email, c.request.method, c.request.path.replace(D, ''), JSON.stringify(r.debugMessages || r.errorPosition || '').slice(0, 200)); } });
+if (res.testResults && res.testResults.length) console.log(`시험 ${cases.length}개 중 통과 ${cases.length - bad}개`);
 if (bad) process.exit(1);
 if (!apply) { console.log('시험만 했어요 (적용 안 함)'); process.exit(0); }
-const rs = await api(`projects/${P}/rulesets`, { method:'POST', body:JSON.stringify({ source:{ files:[{ name:'firestore.rules', content:src }] } }) });
 await api(`projects/${P}/releases/cloud.firestore`, { method:'PATCH', body:JSON.stringify({ release:{ name:`projects/${P}/releases/cloud.firestore`, rulesetName:rs.name } }) });
 console.log('적용 완료:', rs.name.split('/').pop(), '(이전:', rel.rulesetName.split('/').pop() + ')');
 // 옛 일정에 '누구 일정인지(people)' 채우기 — 아이들 화면이 이 값으로 보여 줘요
