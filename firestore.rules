@@ -5,14 +5,52 @@ service cloud.firestore {
       return request.auth != null
         && request.auth.token.email in ['me@family-cal.app', 'hus@family-cal.app', 'kid1@family-cal.app', 'kid2@family-cal.app'];
     }
-    // 가족 공유 데이터 (private 아래는 제외)
+    function who() { return request.auth.token.email.split('@')[0]; }
+    function parent() { return family() && who() in ['me', 'hus']; }
+    function kid() { return family() && who() in ['kid1', 'kid2']; }
+
+    // 기본: 엄마·아빠만 (가계부·근무·설정·공유 표시 등)
     match /{col}/{document=**} {
-      allow read, write: if family() && col != 'private';
+      allow read, write: if parent() && !(col in ['private', 'kcycle']);
     }
-    // 나만 보는 가계부: 본인만 읽고 쓰기
+    // 아이들도 함께 쓰는 것
+    match /config/main { allow read: if family(); }
+    match /members/{uid} {
+      allow read: if family();
+      allow write: if family() && request.auth.uid == uid && request.resource.data.who == who();
+    }
+    match /annivs/{id} { allow read: if family(); }
+    match /notices/{id} { allow read, write: if family(); }
+    match /photos/{id} { allow read, write: if family(); }
+    // 일정: 아이들은 자기가 들어간 일정만
+    match /events/{id} {
+      allow read, delete: if kid() && who() in resource.data.people;
+      allow create: if kid() && who() in request.resource.data.people;
+      allow update: if kid() && who() in resource.data.people && who() in request.resource.data.people;
+    }
+    // 새 소식: 아이들은 자기에게 보이는 것(vis)만
+    match /log/{id} {
+      allow read: if kid() && who() in resource.data.vis;
+      allow create: if kid();
+    }
+    // 아이 주기 → 아빠 화면용 '감정 주의' 표시는 본인만 씀
+    match /share/{id} {
+      allow create, update: if kid() && id == 'cycle_' + who();
+    }
+    // 아이 주기 기록: 본인만 쓰고, 엄마는 읽기만
+    match /kcycle/{w} {
+      allow read: if family() && (who() == w || who() == 'me');
+      allow write: if family() && who() == w;
+    }
+    // 각자만 보는 곳
     match /private/{uid}/{document=**} {
       allow read, write: if family() && request.auth.uid == uid;
     }
-    // 휴대폰 알림 받는 곳(inbox, private/{uid}/inbox)은 비밀 키가 맞을 때만 쓰기 허용 — 키는 Firebase 콘솔에만 넣어 두세요.
+    // 휴대폰 카드·은행 알림 받는 곳: 비밀 키가 맞을 때만 쓰기
+    match /inbox/{id} {
+      allow create: if request.resource.data.key == '(비밀 키 — Firebase 콘솔에만 있어요)'
+        && request.resource.data.keys().hasOnly(['key', 'app', 'text'])
+        && request.resource.data.text is string && request.resource.data.text.size() < 3000;
+    }
   }
 }

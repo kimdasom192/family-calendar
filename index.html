@@ -99,6 +99,9 @@ header{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var
 .cy.on{background:var(--cyc)}
 .cy.pred{border:1.5px solid var(--cyc);width:6px;height:6px}
 .cy.fertile{background:#7cc58f;width:5px;height:5px;opacity:.8}
+.cy.kc{margin-left:2px}.cy.kc.on{background:var(--c-kid1)}.cy.kc.pred{background:none;border-color:var(--c-kid1)}
+.cyx.kx{background:color-mix(in srgb, var(--c-kid1) 20%, transparent)}
+.cycard.kc{border-color:color-mix(in srgb, var(--c-kid1) 40%, var(--line));background:color-mix(in srgb, var(--c-kid1) 7%, var(--surface))}
 .cyx{font-size:10px;line-height:1.25;padding:1px 4px;border-radius:5px;background:color-mix(in srgb, #6b8fb3 18%, transparent);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cycard{display:flex;align-items:center;gap:10px;flex-wrap:wrap;border:1px solid color-mix(in srgb, var(--cyc) 35%, var(--line));background:color-mix(in srgb, var(--cyc) 7%, var(--surface));border-radius:var(--r);padding:10px 12px;margin-bottom:10px}
 .cycard.share{border-color:var(--line);background:color-mix(in srgb, #6b8fb3 10%, var(--surface))}
@@ -452,6 +455,10 @@ function catFromPeople(ps){
   if (k === 'kid1,kid2') return 'kids';
   return 'multi';
 }
+/* 아이들 계정: 본인이 들어간 일정만 보고, 가계부·근무·설정은 안 보여요 */
+const isKid = () => state.myWho === 'kid1' || state.myWho === 'kid2';
+function normEvent(e){ const ps = peopleOf(e).filter(p => PERSONS.includes(p)); if (isKid() && !ps.includes(state.myWho)) ps.push(state.myWho); return { ...e, people:ps.length ? ps : [state.myWho || 'me'] }; }
+function evVis(...es){ const v = new Set(['me','hus']); es.filter(Boolean).forEach(e => peopleOf(e).forEach(p => { if (PERSONS.includes(p)) v.add(p); })); return [...v]; }
 function evCat(e){ return e.people ? catFromPeople(e.people) : (e.cat || 'me'); }
 function evLabel(e){ const c = evCat(e); return c === 'multi' ? peopleOf(e).filter(p => PERSONS.includes(p)).map(catLabel).join('·') : catLabel(c); }
 function evColors(e){ const c = evCat(e); if (c !== 'multi') return [catVar(c)]; return peopleOf(e).filter(p => PERSONS.includes(p)).map(catVar); }
@@ -609,7 +616,7 @@ function parseLine(line, base){
     const m = line.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일?|(\d{1,2})\s*[\/.]\s*(\d{1,2})|^\s*(\d{1,2})\s+(\d{1,2})(?!\d)/);
     let date = m ? ymd(guessDate(+(m[1]||m[3]||m[5]), +(m[2]||m[4]||m[6]))) : /어제/.test(line) ? ymd(addDays(today0(), -1)) : state.view === 'day' ? ymd(base) : ymd(today0());
     if (date > ymd(today0()) && m) { const y = fromYmd(date); y.setFullYear(y.getFullYear() - 1); if (dd0(ymd(y), ymd(today0())) < 300) date = ymd(y); }
-    return { kind:'cycle', act:/(끝|종료|마지막)/.test(line) ? 'end' : 'start', date, notes:cycOwner() ? [] : ['다솜 계정에서만 쓸 수 있어요'] };
+    return { kind:'cycle', act:/(끝|종료|마지막)/.test(line) ? 'end' : 'start', date, notes:cycOwner() ? [] : ['주기 기록은 본인 계정에서만 쓸 수 있어요'] };
   }
   let az = line.match(/^\s*기념일\s*[:：]?\s*([\s\S]+)$/);
   if (!az && !/^\s*(공지|알림)/.test(line)) {
@@ -772,20 +779,22 @@ function diffEvent(a, b){
   return c;
 }
 function descAnniv(a){ return `${annivIcon(a)}${annivTitle(a)} · ${annivDateLabel(a)}`; }
-async function logChange(act, type, ref, title, date, changes){
+async function logChange(act, type, ref, title, date, changes, vis){
   if (local || !db) return;
   if (act === 'edit' && changes && !changes.length) return;
-  try { await db.collection('log').add({ act, type, ref:String(ref||''), title:String(title||''), date:date||'', changes:changes||[], ...stamp() }); } catch(e){}
+  // vis: 이 소식을 볼 수 있는 사람 (없으면 엄마·아빠만). 아이들은 자기 것만 받아요.
+  vis = vis || (type === 'notice' || type === 'anniv' ? PERSONS.slice() : ['me','hus']);
+  try { await db.collection('log').add({ act, type, ref:String(ref||''), title:String(title||''), date:date||'', changes:changes||[], vis, ...stamp() }); } catch(e){}
 }
 const api = {
-  async addEvent(e){ if (local){ state.events.push({ id:'l'+Date.now()+Math.random().toString(36).slice(2,6), ...e }); lsave(); render(); return; } const ref = await db.collection('events').add({ ...e, ...stamp() }); logChange('new','event',ref.id,descEvent(e),e.date); },
-  async setEvent(id,e){ if (local){ const i = state.events.findIndex(x=>x.id===id); if (i>=0) state.events[i] = { id, ...e }; lsave(); render(); return; } const before = state.events.find(x => x.id === id); await db.doc('events/'+id).set({ ...e, ...stamp() }); logChange(before ? 'edit' : 'new','event',id,descEvent(e),e.date,diffEvent(before, e)); },
-  async delEvent(id){ if (local){ state.events = state.events.filter(x=>x.id!==id); lsave(); render(); return; } const before = state.events.find(x => x.id === id); await db.doc('events/'+id).delete(); if (before) logChange('del','event',id,descEvent(before),before.date); },
+  async addEvent(e){ if (local){ state.events.push({ id:'l'+Date.now()+Math.random().toString(36).slice(2,6), ...e }); lsave(); render(); return; } e = normEvent(e); const ref = await db.collection('events').add({ ...e, ...stamp() }); logChange('new','event',ref.id,descEvent(e),e.date,undefined,evVis(e)); },
+  async setEvent(id,e){ if (local){ const i = state.events.findIndex(x=>x.id===id); if (i>=0) state.events[i] = { id, ...e }; lsave(); render(); return; } const before = state.events.find(x => x.id === id); e = normEvent(e); await db.doc('events/'+id).set({ ...e, ...stamp() }); logChange(before ? 'edit' : 'new','event',id,descEvent(e),e.date,diffEvent(before, e),evVis(before, e)); },
+  async delEvent(id){ if (local){ state.events = state.events.filter(x=>x.id!==id); lsave(); render(); return; } const before = state.events.find(x => x.id === id); await db.doc('events/'+id).delete(); if (before) logChange('del','event',id,descEvent(before),before.date,undefined,evVis(before)); },
   async setWork(ds,w){ if (local){ state.work[ds] = w; lsave(); render(); return; } const before = state.work[ds]; await db.doc('work/'+ds).set({ ...w, ...stamp() }); if (!before || before.course !== w.course) logChange(before ? 'edit' : 'new','work',ds,workText(ds,w),ds, before ? [`${workText(ds,before)} → ${workText(ds,w)}`] : []); },
   async delWork(ds){ if (local){ delete state.work[ds]; lsave(); render(); return; } const before = state.work[ds]; await db.doc('work/'+ds).delete(); if (before) logChange('del','work',ds,workText(ds,before),ds); },
-  async addAnniv(a){ if (local){ state.annivs.push({ id:'a'+Date.now(), ...a }); lsave(); render(); return; } const ref = await db.collection('annivs').add({ ...a, ...stamp() }); logChange('new','anniv',ref.id,descAnniv(a),''); },
-  async setAnniv(id,a){ if (local){ const i = state.annivs.findIndex(x=>x.id===id); if (i>=0) state.annivs[i] = { id, ...a }; lsave(); render(); return; } const before = state.annivs.find(x => x.id === id); await db.doc('annivs/'+id).set({ ...a, ...stamp() }); const ch = before && descAnniv(before) !== descAnniv(a) ? [`${descAnniv(before)} → ${descAnniv(a)}`] : []; logChange('edit','anniv',id,descAnniv(a),'',ch); },
-  async delAnniv(id){ if (local){ state.annivs = state.annivs.filter(x=>x.id!==id); lsave(); render(); return; } const before = state.annivs.find(x => x.id === id); await db.doc('annivs/'+id).delete(); if (before) logChange('del','anniv',id,descAnniv(before),''); },
+  async addAnniv(a){ if (local){ state.annivs.push({ id:'a'+Date.now(), ...a }); lsave(); render(); return; } const ref = await db.collection('annivs').add({ ...a, ...stamp() }); logChange('new','anniv',ref.id,descAnniv(a),'',undefined,a.who === 'couple' ? ['me','hus'] : null); },
+  async setAnniv(id,a){ if (local){ const i = state.annivs.findIndex(x=>x.id===id); if (i>=0) state.annivs[i] = { id, ...a }; lsave(); render(); return; } const before = state.annivs.find(x => x.id === id); await db.doc('annivs/'+id).set({ ...a, ...stamp() }); const ch = before && descAnniv(before) !== descAnniv(a) ? [`${descAnniv(before)} → ${descAnniv(a)}`] : []; logChange('edit','anniv',id,descAnniv(a),'',ch,a.who === 'couple' || (before && before.who === 'couple') ? ['me','hus'] : null); },
+  async delAnniv(id){ if (local){ state.annivs = state.annivs.filter(x=>x.id!==id); lsave(); render(); return; } const before = state.annivs.find(x => x.id === id); await db.doc('annivs/'+id).delete(); if (before) logChange('del','anniv',id,descAnniv(before),'',undefined,before.who === 'couple' ? ['me','hus'] : null); },
   async addNotice(n){ if (local){ state.notices.push({ id:'n'+Date.now(), ...n, at:Date.now() }); lsave(); render(); return; } const ref = await db.collection('notices').add({ ...n, ...stamp() }); logChange('new','notice',ref.id,n.text.split('\n')[0],''); },
   async setNotice(id,n){ if (local){ const i = state.notices.findIndex(x=>x.id===id); if (i>=0) state.notices[i] = { ...state.notices[i], ...n }; lsave(); render(); return; } const before = state.notices.find(x => x.id === id); await db.doc('notices/'+id).update({ ...n, ...stamp() }); const ch = []; if (before && before.text !== n.text) ch.push(`내용: ${before.text.split('\n')[0]} → ${n.text.split('\n')[0]}`); if (before && (before.until||'') !== (n.until||'')) ch.push(`기한: ${before.until || '없음'} → ${n.until || '없음'}`); logChange('edit','notice',id,n.text.split('\n')[0],'',ch); },
   async delNotice(id){ if (local){ state.notices = state.notices.filter(x=>x.id!==id); lsave(); render(); return; } const before = state.notices.find(x => x.id === id); await db.doc('notices/'+id).delete(); if (before) logChange('del','notice',id,before.text.split('\n')[0],''); },
@@ -957,7 +966,11 @@ function makeDb(F, fs){
     doc: id => docRef(id ? path + '/' + id : F.doc(c).path),
     add: async d => docRef((await F.addDoc(c, d)).path),
     get: async () => { const x = await F.getDocs(c); return { docs:x.docs.map(wrapDocSnap), size:x.size, empty:x.empty, metadata:x.metadata }; },
-    onSnapshot: (next, err) => F.onSnapshot(c, { includeMetadataChanges:true }, x => next({ docs:x.docs.map(wrapDocSnap), size:x.size, empty:x.empty, metadata:x.metadata }), e => err && err({ code:mapCode(e.code), message:e.message }))
+    onSnapshot: (next, err) => F.onSnapshot(c, { includeMetadataChanges:true }, x => next({ docs:x.docs.map(wrapDocSnap), size:x.size, empty:x.empty, metadata:x.metadata }), e => err && err({ code:mapCode(e.code), message:e.message })),
+    where: (f, op, v) => { const q = F.query(c, F.where(f, op, v)); return {
+      get: async () => { const x = await F.getDocs(q); return { docs:x.docs.map(wrapDocSnap), size:x.size, empty:x.empty, metadata:x.metadata }; },
+      onSnapshot: (next, err) => F.onSnapshot(q, { includeMetadataChanges:true }, x => next({ docs:x.docs.map(wrapDocSnap), size:x.size, empty:x.empty, metadata:x.metadata }), e => err && err({ code:mapCode(e.code), message:e.message }))
+    }; }
   }; };
   return { doc:docRef, collection:colRef };
 }
@@ -1055,12 +1068,20 @@ function loginFlow(){
     draw();
   });
 }
-/* ===== 🌙 내 주기 (본인만 보는 기록 · private/<uid>/config/cycle) ===== */
+/* ===== 🌙 주기 기록 =====
+   엄마: private/<uid>/config/cycle (본인만) · 첫째: kcycle/kid1 (본인만 쓰고, 엄마는 보기만)
+   아빠에게는 날짜와 '컨디션/감정 주의' 표시만 share/ 로 보내요 (기록 자체는 안 보냄) */
+const CYC_OWNERS = ['me','kid1'];
 const cyc = { loaded:false, periods:[], settings:{ share:true, warn:true, alert:true } };
-function cycOwner(){ return !!db && !local && !!me && state.myWho === 'me'; }
+const kc = { loaded:false, periods:[], settings:{} }; // 엄마 화면에서 보는 첫째 기록 (보기 전용)
+function cycOwner(){ return !!db && !local && !!me && CYC_OWNERS.includes(state.myWho); }
+function cycKid(){ return cycOwner() && state.myWho !== 'me'; }
+function kcViewer(){ return !!db && !local && !!me && state.myWho === 'me' && kc.loaded && kc.periods.length > 0; }
+const cycName = w => w === 'me' ? '다솜' : catLabel(w);
+const nmi = nm => { const c = String(nm || '').slice(-1).charCodeAt(0) - 0xAC00; return nm + (c >= 0 && c < 11172 && c % 28 ? '이' : ''); }; // 여울 → 여울이
 const dd0 = (a, b) => Math.round((fromYmd(b) - fromYmd(a)) / 864e5);
-function cycPred(){
-  const ps = cyc.periods.filter(p => p.start).slice().sort((a, b) => a.start.localeCompare(b.start));
+function cycPred(c = cyc){
+  const ps = c.periods.filter(p => p.start).slice().sort((a, b) => a.start.localeCompare(b.start));
   if (!ps.length) return null;
   const iv = []; for (let i = 1; i < ps.length; i++) { const g = dd0(ps[i-1].start, ps[i].start); if (g >= 15 && g <= 60) iv.push(g); }
   const recent = iv.slice(-6);
@@ -1082,99 +1103,136 @@ function cycPred(){
 }
 const inR = (ds, a, b) => ds >= a && ds <= b;
 const ROLL_MAX = 30;
-function cycDay(ds){
-  if (!cyc.loaded || !cycOwner()) return null;
-  const p = cycPred(); if (!p) return null;
+function cycDay(ds, c = cyc){
+  if (c === kc ? !kcViewer() : !(cyc.loaded && cycOwner())) return null;
+  const p = cycPred(c); if (!p) return null;
   for (const r of p.ps) { const e = r.end || (r === p.last ? p.lastEnd : r.start); if (inR(ds, r.start, e)) return { kind:'on', n:dd0(r.start, ds) + 1, r }; }
   for (const f of p.future) if (!p.ongoing && inR(ds, f.start, f.end) && ds > p.lastEnd) return { kind:'pred', n:dd0(f.start, ds) + 1 };
-  if (inR(ds, p.fertile.from, p.fertile.to) && ds > p.lastEnd) return { kind:'fertile', ov:ds === p.ov };
+  const kidData = c === kc || cycKid();
+  if (!kidData && inR(ds, p.fertile.from, p.fertile.to) && ds > p.lastEnd) return { kind:'fertile', ov:ds === p.ov };
   return null;
 }
-async function saveCyc(){ await db.doc(bp('config/cycle', 'mine')).set({ periods:cyc.periods, settings:cyc.settings, at:Date.now() }); }
+const cycPath = () => state.myWho === 'me' ? bp('config/cycle', 'mine') : 'kcycle/' + state.myWho;
+async function saveCyc(){ await db.doc(cycPath()).set({ periods:cyc.periods, settings:cyc.settings, at:Date.now() }); }
+/* 아빠 쪽 문구 */
+const KID_COND = nm => `⚠️ ${nm} 감정 주의 · 오늘은 잔소리 쉬고 말 한마디 부드럽게 🫶`;
+const KID_WARN = (nm, d) => d >= 2 ? `⚠️ ${nm} 감정 주의보 D-${d} · 말투 미리 말랑하게 🍬` : `⚠️ ${nm} 감정 주의보 내일 발령 · 오늘부터 부드럽게 🫶`;
+const once = k => { try { if (localStorage.getItem('fc-once-' + k)) return false; localStorage.setItem('fc-once-' + k, '1'); } catch(e){} return true; };
 async function cycStart(ds){ const p = cycPred(); if (p && p.ongoing && dd0(p.last.start, ds) < 10 && dd0(p.last.start, ds) >= 0) { toast('이미 기록 중이에요'); return; } cyc.periods.push({ id:'c' + Date.now().toString(36), start:ds, end:'', flow:'', sym:[], memo:'' }); await saveCyc(); toast('🌙 시작일을 기록했어요');
-  // 진우님 🔔에 한 번: 최근 이틀 안에 시작한 기록일 때만
-  if ((cyc.settings || {}).share !== false && dd0(ds, ymd(today0())) <= 1 && dd0(ds, ymd(today0())) >= 0) { try { const ref = db.doc('log/cyc_start_' + ds); if (!(await ref.get()).exists) await ref.set({ act:'alert', type:'cycle', lv:90, ref:'', date:ds, to:['hus'], changes:[`🌧 ${dd0(ds, ymd(today0())) ? '어제' : '오늘'}부터 다솜 컨디션 저하 · 배려 모드 ON 🫶 (따뜻한 말 + 디저트 추천)`], by:'system', at:Date.now() }); } catch(e){} } }
+  // 아빠 🔔에 한 번: 최근 이틀 안에 시작한 기록일 때만
+  const ago = dd0(ds, ymd(today0()));
+  if ((cyc.settings || {}).share === false || ago > 1 || ago < 0) return;
+  if (cycKid()) { const w = state.myWho, id = `kcyc_start_${w}_${ds}`; if (once(id)) { try { await db.doc('log/' + id).set({ act:'alert', type:'cycle', lv:90, ref:'', date:ds, to:['hus'], vis:['hus'], owner:w, changes:[KID_COND(cycName(w))], by:'system', at:Date.now() }); } catch(e){} } return; }
+  try { const ref = db.doc('log/cyc_start_' + ds); if (!(await ref.get()).exists) await ref.set({ act:'alert', type:'cycle', lv:90, ref:'', date:ds, to:['hus'], changes:[`🌧 ${ago ? '어제' : '오늘'}부터 다솜 컨디션 저하 · 배려 모드 ON 🫶 (따뜻한 말 + 디저트 추천)`], by:'system', at:Date.now() }); } catch(e){} }
 async function cycEnd(ds){ const ps = cyc.periods.filter(p => p.start <= ds).sort((a, b) => b.start.localeCompare(a.start)); const r = ps[0]; if (!r || dd0(r.start, ds) > 14) { toast('먼저 시작일을 기록해 주세요'); return; } r.end = ds; await saveCyc(); toast('🌙 끝난 날을 기록했어요'); }
-/* 진우님 쪽에 보낼 것: 날짜와 "컨디션" 표시만 (기록 자체는 안 보냄) */
+/* 아빠에게 보낼 것: 날짜와 표시만 (기록 자체는 안 보냄) */
 let cycShareSig = '';
 async function syncCycShare(){
   if (!cycOwner() || !cyc.loaded) return;
+  const kid = cycKid(), w = state.myWho, warnDays = kid ? 3 : 7;
   const p = cycPred(), st = cyc.settings || {};
   const cond = [], td = ymd(today0());
   if (p && st.share !== false) {
     if (p.ongoing || p.lastEnd >= td) cond.push({ from:p.last.start, to:p.lastEnd });
     if (!p.ongoing && !p.overdue) cond.push({ from:p.next, to:p.future[0].end });
   }
-  // 미뤄지는 중: 진우님 앱이 날마다 오늘부터 다시 계산해요
+  // 미뤄지는 중: 아빠 앱이 날마다 오늘부터 다시 계산해요
   const roll = p && st.share !== false && !p.ongoing && p.overdue <= ROLL_MAX ? { from:p.next, until:ymd(addDays(fromYmd(p.next), ROLL_MAX)), len:p.avgLen } : null;
-  const warn = p && st.warn !== false && !p.ongoing && !p.overdue ? { from:ymd(addDays(fromYmd(p.next), -7)), to:ymd(addDays(fromYmd(p.next), -1)), start:p.next } : null;
-  const doc = { owner:'me', cond, warn, roll, to:['hus'], at:Date.now() };
+  const warn = p && st.warn !== false && !p.ongoing && !p.overdue ? { from:ymd(addDays(fromYmd(p.next), -warnDays)), to:ymd(addDays(fromYmd(p.next), -1)), start:p.next } : null;
+  const doc = { owner:w, cond, warn, roll, to:['hus'], at:Date.now() };
   const sig = JSON.stringify({ cond, warn, roll });
   if (sig === cycShareSig) return; cycShareSig = sig;
+  if (kid) { const k = 'fc-cycsig-' + w; try { if (localStorage.getItem(k) === sig) return; } catch(e){} try { await db.doc('share/cycle_' + w).set(doc); try { localStorage.setItem(k, sig); } catch(e){} } catch(e){} return; }
   try { const cur = state.cycShare; if (cur && JSON.stringify({ cond:cur.cond, warn:cur.warn, roll:cur.roll || null }) === sig) return; await db.doc('share/cycle').set(doc); } catch(e){}
 }
 async function cycAlerts(){
   if (!cycOwner() || !cyc.loaded) return;
   const p = cycPred(); if (!p || p.ongoing) return;
-  const td = ymd(today0()), left = dd0(td, p.next);
+  const td = ymd(today0()), left = dd0(td, p.next), kid = cycKid(), w = state.myWho;
   let key = '', text = '';
   if ((cyc.settings || {}).alert === false) {} else if (left === 2 || left === 1) { key = `cyc_${p.next}_d2`; text = `🌙 예정일이 ${left}일 남았어요 (${+p.next.slice(5,7)}/${+p.next.slice(8)})`; }
   else if (left === 0) { key = `cyc_${p.next}_d0`; text = '🌙 오늘이 예정일이에요'; }
-  if (key && !logs.mine.some(x => x.id === key)) { try { const ref = db.doc(bp('log/' + key, 'mine')); if (!(await ref.get()).exists) await ref.set({ act:'alert', type:'cycle', lv:0, ref:'', date:td, changes:[text], by:'system', at:Date.now() }); } catch(e){} }
-  // 일주일 전: 진우님 🔔에만 "다솜주의보" 한 번
-  if ((cyc.settings || {}).warn !== false && !p.overdue && left >= 1 && left <= 7) {
+  if (key && !logs.mine.some(x => x.id === key)) { try { const ref = db.doc(`private/${me}/log/${key}`); if (!(await ref.get()).exists) await ref.set({ act:'alert', type:'cycle', lv:0, ref:'', date:td, changes:[text], by:'system', at:Date.now() }); } catch(e){} }
+  if ((cyc.settings || {}).warn === false || p.overdue) return;
+  if (kid) { // 3일 전: 아빠 🔔에만 "감정 주의보" 한 번
+    const id = `kcyc_warn_${w}_${p.next}`;
+    if (left >= 1 && left <= 3 && once(id)) { try { await db.doc('log/' + id).set({ act:'alert', type:'cycle', lv:90, ref:'', date:td, to:['hus'], vis:['hus'], owner:w, changes:[KID_WARN(cycName(w), left)], by:'system', at:Date.now() }); } catch(e){} }
+    return;
+  }
+  // 일주일 전: 아빠 🔔에만 "다솜주의보" 한 번
+  if (left >= 1 && left <= 7) {
     const wk = 'cyc_warn_' + p.next;
     if (!logs.fam.some(x => x.id === wk)) { try { const ref = db.doc('log/' + wk); if (!(await ref.get()).exists) await ref.set({ act:'alert', type:'cycle', lv:90, ref:'', date:td, to:['hus'], changes:[`⚠️ 다솜주의보 예비 발령! ${+p.next.slice(5,7)}/${+p.next.slice(8)}쯤부터 다솜 컨디션이 안 좋을 수 있어요. 간식 비축 권장 🍫`], by:'system', at:Date.now() }); } catch(e){} }
   }
 }
-/* 진우님 화면용 */
+/* 아빠 화면용 */
 const WARN_MSG = d => d >= 6 ? `⚠️ 다솜주의보 예비 발령 (D-${d}) · 달달한 간식 비축 시작 🍫`
   : d >= 4 ? `⚠️ 다솜주의보 D-${d} · 잔소리 면역력 충전 중 🔋`
   : d >= 2 ? `🚨 다솜주의보 D-${d} · 설거지는 먼저 하는 사람이 승리 🧽`
   : `🚨 다솜주의보 내일 발령 · 오늘은 무조건 "응 맞아" 🙆‍♂️`;
-function shareView(){ const s = state.cycShare; return s && state.myWho && (s.to || []).includes(state.myWho) ? s : null; }
-function shareDay(ds){
-  const s = shareView(); if (!s) return null;
-  if ((s.cond || []).some(c => inR(ds, c.from, c.to))) return { kind:'cond' };
-  if (s.roll) { const td = ymd(today0()); if (td >= s.roll.from && td <= s.roll.until && inR(ds, td, ymd(addDays(today0(), (+s.roll.len || 5) - 1)))) return { kind:'cond' }; }
-  if (s.warn && inR(ds, s.warn.from, s.warn.to)) return { kind:'warn', d:dd0(ds, s.warn.start) };
+function shareViews(){ return [state.cycShare, state.kShare].filter(s => s && state.myWho && (s.to || []).includes(state.myWho)); }
+const kidShare = s => !!(s && s.owner && s.owner !== 'me');
+function shareDayOf(s, ds){
+  if ((s.cond || []).some(c => inR(ds, c.from, c.to))) return { kind:'cond', s };
+  if (s.roll) { const td = ymd(today0()); if (td >= s.roll.from && td <= s.roll.until && inR(ds, td, ymd(addDays(today0(), (+s.roll.len || 5) - 1)))) return { kind:'cond', s }; }
+  if (s.warn && inR(ds, s.warn.from, s.warn.to)) return { kind:'warn', d:dd0(ds, s.warn.start), s };
   return null;
 }
-function shareTicker(){ const x = shareDay(ymd(today0())); if (!x) return ''; return x.kind === 'warn' ? WARN_MSG(x.d) : '🌧 다솜 컨디션 저하 중 · 따뜻한 말 한마디 + 디저트 효과 좋음 🍰'; }
-function shareLog(){
-  const s = shareView(); if (!s || !s.warn) return [];
-  const td = ymd(today0()); if (td < s.warn.from || td > s.warn.start) return [];
-  return [{ id:'syn_cyc_' + s.warn.start, _syn:1, act:'alert', type:'cycle', lv:90, by:'system', at:fromYmd(s.warn.from).getTime() + 9 * 36e5, changes:[`⚠️ 다솜주의보 예비 발령! ${+s.warn.start.slice(5,7)}/${+s.warn.start.slice(8)}쯤부터 다솜 컨디션이 안 좋을 수 있어요. 간식 비축 권장 🍫`] }];
+function shareDays(ds){ return shareViews().map(s => shareDayOf(s, ds)).filter(Boolean); }
+function shareText(x){ const nm = cycName(x.s.owner || 'me'); return kidShare(x.s) ? (x.kind === 'cond' ? KID_COND(nm) : KID_WARN(nm, x.d)) : (x.kind === 'cond' ? '🌧 다솜 컨디션 저하 중 · 따뜻한 말 한마디 + 디저트 효과 좋음 🍰' : WARN_MSG(x.d)); }
+function shareCard(x){
+  const nm = cycName(x.s.owner || 'me');
+  const title = kidShare(x.s) ? (x.kind === 'cond' ? `⚠️ ${nm} 감정 주의` : KID_WARN(nm, x.d)) : (x.kind === 'cond' ? '🌧 다솜 컨디션 저하 예상일' : WARN_MSG(x.d));
+  const help = x.kind === 'cond' ? (kidShare(x.s) ? '잔소리는 잠시 쉬고, 이유는 묻지 않기 🫶' : '따뜻한 말 한마디, 디저트, 먼저 하는 설거지 효과 좋음') : '예상일이라 조금 달라질 수 있어요';
+  return `<div class="cycard share"><div class="grow"><b>${esc(title)}</b><div class="help">${help}</div></div></div>`;
 }
+function shareTicker(){ return shareDays(ymd(today0())).map(shareText).join('  ·  '); }
 /* 화면 */
 const FLOW = { low:'적음', mid:'보통', high:'많음' };
 const SYMS = ['복통','허리통증','두통','피곤함','예민함','붓기','여드름','컨디션 좋음'];
 function cycCard(ds){
-  const x = cycDay(ds), p = cycPred();
   if (!cycOwner() || !cyc.loaded) return '';
+  const x = cycDay(ds), p = cycPred();
   let line = '', btns = '';
   if (x && x.kind === 'on') { line = `🌙 ${x.n}일째${x.r.end ? '' : ' · 진행 중'}`; btns = `${x.r.end ? '' : `<button class="ghost" data-cyc-end="${ds}">이날 끝났어요</button>`}<button class="ghost" data-cyc-edit="${esc(x.r.id)}">기록 수정</button>`; }
   else { line = x && x.kind === 'pred' && p.rolling && ds === ymd(today0()) ? `🌙 예정일이 ${p.overdue}일 지나 오늘로 미뤄졌어요` : x && x.kind === 'pred' ? `🌙 예정일 범위 (${x.n}일째 예상)` : x && x.kind === 'fertile' ? `🌱 가임기 예상${x.ov ? ' · 배란 예정일' : ''}` : p ? (p.rolling ? `🌙 예정일이 ${p.overdue}일 지나 오늘로 미뤄졌어요` : `🌙 다음 예정일 ${+p.next.slice(5,7)}/${+p.next.slice(8)}${p.overdue ? ` · ${p.overdue}일 지났어요` : ` · D-${dd0(ymd(today0()), p.next)}`}`) : '🌙 내 주기 기록'; btns = `<button class="ghost" data-cyc-start="${ds}">이날 시작했어요</button>`; }
-  return `<div class="cycard"><div class="grow"><b>${line}</b><div class="help">🔒 나만 보여요</div></div><div class="cybtns">${btns}<button class="ghost" data-cycsheet>주기 ›</button></div></div>`;
+  return `<div class="cycard"><div class="grow"><b>${line}</b><div class="help">${cycKid() ? '🔒 나와 엄마만 보여요' : '🔒 나만 보여요'}</div></div><div class="cybtns">${btns}<button class="ghost" data-cycsheet>주기 ›</button></div></div>`;
 }
-function cycSheet(){
-  const p = cycPred(), st = cyc.settings || {}, td = ymd(today0());
+/* 엄마 화면: 첫째 주기 (보기 전용) */
+function kcCard(ds){
+  if (!kcViewer()) return '';
+  const x = cycDay(ds, kc), p = cycPred(kc), nm = cycName('kid1');
+  if (!x && dd0(ymd(today0()), ds) !== 0) return '';
+  const line = x && x.kind === 'on' ? `🌙 ${nm} ${x.n}일째${x.r.end ? '' : ' · 진행 중'}` : x && x.kind === 'pred' ? `🌙 ${nm} 예정일 범위` : p ? `🌙 ${nm} 다음 예정일 ${p.rolling ? '오늘(미뤄지는 중)' : `${+p.next.slice(5,7)}/${+p.next.slice(8)}`}` : '';
+  if (!line) return '';
+  return `<div class="cycard kc"><div class="grow"><b>${esc(line)}</b><div class="help">👀 보기 전용 · 기록은 ${esc(nmi(nm))}만 할 수 있어요</div></div><div class="cybtns"><button class="ghost" data-kcsheet>주기 ›</button></div></div>`;
+}
+function cycSheet(view){
+  const ro = view === 'kid', c = ro ? kc : cyc, kidData = ro || cycKid();
+  if (ro ? !kcViewer() : !cycOwner()) return;
+  const p = cycPred(c), st = c.settings || {}, td = ymd(today0()), nm = cycName(ro ? 'kid1' : state.myWho), dad = kidData && !ro ? '아빠' : esc(catLabel('hus'));
   const rows = (p ? p.ps : []).slice().reverse().map((r, i, a) => { const nx = a[i-1]; const len = r.end ? dd0(r.start, r.end) + 1 : null; const gap = nx ? dd0(r.start, nx.start) : null;
-    return `<button class="mrow" data-cyc-edit="${esc(r.id)}"><span class="tm">${+r.start.slice(5,7)}/${+r.start.slice(8)}</span><span class="mm"><b>${r.start.slice(0,4)}.${r.start.slice(5,7)}.${r.start.slice(8)} ~ ${r.end ? `${+r.end.slice(5,7)}/${+r.end.slice(8)}` : '진행 중'}</b><span class="tags">${len ? `<span>${len}일</span>` : ''}${gap ? `<span>다음까지 ${gap}일</span>` : ''}${r.flow ? `<span class="chipx">${FLOW[r.flow]}</span>` : ''}${(r.sym || []).map(s => `<span class="chipx">${esc(s)}</span>`).join('')}${r.memo ? `<span>${esc(r.memo)}</span>` : ''}</span></span><span class="amt">›</span></button>`; }).join('');
-  openSheet(`<div class="sh"><h3>🌙 내 주기</h3><button class="ghost" data-close>닫기</button></div>
-    <p class="help" style="margin:0">🔒 나만 볼 수 있어요. 다른 가족에게는 아래에서 켠 표시만 가요.</p>
-    ${p ? `<div class="mstats"><div><span>다음 예정일</span><b>${p.rolling ? '오늘' : `${+p.next.slice(5,7)}/${+p.next.slice(8)}`}</b></div><div><span>${p.ongoing ? '지금' : p.overdue ? '미뤄진 날' : '남은 날'}</span><b>${p.ongoing ? `${dd0(p.last.start, td) + 1}일째` : p.overdue ? `+${p.overdue}일` : `D-${dd0(td, p.next)}`}</b></div><div><span>배란 예상</span><b>${+p.ov.slice(5,7)}/${+p.ov.slice(8)}</b></div></div>
-    <div class="mstats"><div><span>평균 주기</span><b>${p.avgCycle}일</b></div><div><span>평균 기간</span><b>${p.avgLen}일</b></div><div><span>기록</span><b>${p.ps.length}번</b></div></div>
-    <p class="help" style="margin:0">${p.enough ? `최근 ${p.iv.length}번 주기로 계산했어요.` : '기록이 2번 이상 쌓이면 내 주기로 계산해요. 지금은 28일·5일로 예상해요.'}${p.irregular ? ' 최근 주기 차이가 커서 예정일이 많이 틀릴 수 있어요.' : ''}${p.rolling ? ` 원래 예정일(${+p.next.slice(5,7)}/${+p.next.slice(8)})이 지나서, 시작을 기록할 때까지 하루씩 미뤄요.` : ''} 예상일은 참고용이라 피임에는 쓰지 마세요. 주기가 갑자기 많이 바뀌면 병원에서 상담해 보세요.</p>` : '<p style="margin:0">아직 기록이 없어요. 시작한 날을 넣으면 다음 예정일을 계산해 드려요.</p>'}
-    <div class="btns" style="margin:0"><button class="primary" data-cyc-start="${td}">오늘 시작했어요</button><button class="ghost" data-cyc-new>지난 기록 추가</button></div>
+    const inner = `<span class="tm">${+r.start.slice(5,7)}/${+r.start.slice(8)}</span><span class="mm"><b>${r.start.slice(0,4)}.${r.start.slice(5,7)}.${r.start.slice(8)} ~ ${r.end ? `${+r.end.slice(5,7)}/${+r.end.slice(8)}` : '진행 중'}</b><span class="tags">${len ? `<span>${len}일</span>` : ''}${gap ? `<span>다음까지 ${gap}일</span>` : ''}${r.flow ? `<span class="chipx">${FLOW[r.flow]}</span>` : ''}${(r.sym || []).map(s => `<span class="chipx">${esc(s)}</span>`).join('')}${r.memo ? `<span>${esc(r.memo)}</span>` : ''}</span></span>`;
+    return ro ? `<div class="mrow">${inner}</div>` : `<button class="mrow" data-cyc-edit="${esc(r.id)}">${inner}<span class="amt">›</span></button>`; }).join('');
+  const intro = ro ? `👀 ${esc(nmi(nm))}가 적은 기록을 그대로 보여 줘요. 기록과 수정은 ${esc(nmi(nm))}만 할 수 있어요. ${esc(catLabel('hus'))}에게는 "감정 주의" 표시만 가요.`
+    : kidData ? '🔒 나와 엄마만 볼 수 있어요 (엄마는 보기만 하고 고칠 수 없어요). 아빠에게는 "감정 주의" 표시만 가고, 이유는 안 보여요.'
+    : '🔒 나만 볼 수 있어요. 다른 가족에게는 아래에서 켠 표시만 가요.';
+  const note = kidData ? '처음 몇 년은 주기가 들쑥날쑥한 게 흔해요. 예상일은 참고용이에요. 많이 아프거나 걱정되면 엄마랑 병원에 가 봐요.' : '예상일은 참고용이라 피임에는 쓰지 마세요. 주기가 갑자기 많이 바뀌면 병원에서 상담해 보세요.';
+  openSheet(`<div class="sh"><h3>🌙 ${ro ? `${esc(nm)} 주기` : '내 주기'}</h3><button class="ghost" data-close>닫기</button></div>
+    <p class="help" style="margin:0">${intro}</p>
+    ${p ? `<div class="mstats"><div><span>다음 예정일</span><b>${p.rolling ? '오늘' : `${+p.next.slice(5,7)}/${+p.next.slice(8)}`}</b></div><div><span>${p.ongoing ? '지금' : p.overdue ? '미뤄진 날' : '남은 날'}</span><b>${p.ongoing ? `${dd0(p.last.start, td) + 1}일째` : p.overdue ? `+${p.overdue}일` : `D-${dd0(td, p.next)}`}</b></div>${kidData ? `<div><span>평균 기간</span><b>${p.avgLen}일</b></div>` : `<div><span>배란 예상</span><b>${+p.ov.slice(5,7)}/${+p.ov.slice(8)}</b></div>`}</div>
+    <div class="mstats"><div><span>평균 주기</span><b>${p.avgCycle}일</b></div>${kidData ? '' : `<div><span>평균 기간</span><b>${p.avgLen}일</b></div>`}<div><span>기록</span><b>${p.ps.length}번</b></div></div>
+    <p class="help" style="margin:0">${p.enough ? `최근 ${p.iv.length}번 주기로 계산했어요.` : '기록이 2번 이상 쌓이면 주기에 맞춰 계산해요. 지금은 28일·5일로 예상해요.'}${p.irregular ? ' 최근 주기 차이가 커서 예정일이 많이 틀릴 수 있어요.' : ''}${p.rolling ? ` 원래 예정일(${+p.next.slice(5,7)}/${+p.next.slice(8)})이 지나서, 시작을 기록할 때까지 하루씩 미뤄요.` : ''} ${note}</p>` : `<p style="margin:0">${ro ? '아직 기록이 없어요.' : '아직 기록이 없어요. 시작한 날을 넣으면 다음 예정일을 계산해 드려요.'}</p>`}
+    ${ro ? '' : `<div class="btns" style="margin:0"><button class="primary" data-cyc-start="${td}">오늘 시작했어요</button><button class="ghost" data-cyc-new>지난 기록 추가</button></div>
     <div class="sec">알림 · 공유</div>
     <div class="dcard" style="padding:4px 12px">
       <label class="tgl"><input type="checkbox" id="cy_alert" ${st.alert !== false ? 'checked' : ''}><span>예정일 2일 전·당일에 내 🔔로 알림</span></label>
-      <label class="tgl"><input type="checkbox" id="cy_share" ${st.share !== false ? 'checked' : ''}><span>${esc(catLabel('hus'))} 달력에 "다솜 컨디션" 표시 (이유는 안 보여요)</span></label>
-      <label class="tgl"><input type="checkbox" id="cy_warn" ${st.warn !== false ? 'checked' : ''}><span>예정일 일주일 전 ${esc(catLabel('hus'))}에게 "⚠️ 다솜주의보" 보내기</span></label>
-    </div>
+      <label class="tgl"><input type="checkbox" id="cy_share" ${st.share !== false ? 'checked' : ''}><span>${dad} 달력에 "${kidData ? `${esc(nm)} 감정 주의` : '다솜 컨디션'}" 표시 (이유는 안 보여요)</span></label>
+      <label class="tgl"><input type="checkbox" id="cy_warn" ${st.warn !== false ? 'checked' : ''}><span>예정일 ${kidData ? '3일' : '일주일'} 전 ${dad}에게 "${kidData ? '⚠️ 감정 주의보' : '⚠️ 다솜주의보'}" 보내기</span></label>
+    </div>`}
     ${rows ? `<div class="sec">기록 ${p.ps.length}번</div><div class="dcard"><div class="items">${rows}</div></div>` : ''}`,
   root => {
+    if (ro) return;
     ['alert','share','warn'].forEach(k => root.querySelector('#cy_' + k).addEventListener('change', async ev => { cyc.settings = { ...(cyc.settings || {}), [k]:ev.target.checked }; try { await saveCyc(); toast('바꿨어요'); } catch(e){ fail(e); } }));
   });
 }
@@ -1270,7 +1328,7 @@ function accountSheet(){
     <div class="fld"><label for="ac_code">내 코드 바꾸기 (6자리 이상)</label><div class="inrow"><input id="ac_code" inputmode="numeric" maxlength="12" style="flex:1;min-width:0;border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:9px 11px"><button class="primary" id="ac_save">바꾸기</button></div></div>
     <div class="help" id="ac_msg"></div>
     ${true ? `<div class="fld"><label for="ac_file">데이터 가져오기 (.json · 일정·가계부 파일)</label><input id="ac_file" type="file" accept=".json,application/json"></div>` : ''}
-    ${cycOwner() ? '<div class="btns" style="margin:0"><button class="ghost" data-cycsheet>🌙 내 주기 기록 (나만 보기)</button></div>' : ''}
+    ${cycOwner() || kcViewer() ? `<div class="btns" style="margin:0">${cycOwner() ? `<button class="ghost" data-cycsheet>🌙 내 주기 기록 (${cycKid() ? '나와 엄마만' : '나만 보기'})</button>` : ''}${kcViewer() ? `<button class="ghost" data-kcsheet>🌙 ${esc(cycName('kid1'))} 주기 보기</button>` : ''}</div>` : ''}
     <div class="btns"><button class="danger" id="ac_out">이 휴대폰에서 나가기</button></div>`,
   root => {
     const msg = root.querySelector('#ac_msg');
@@ -1308,34 +1366,48 @@ async function boot(){
   const timer = setTimeout(() => { if (!state.loaded) showNote('일정을 불러오는 중이에요. 연결이 느리면 잠시 후 다시 열어 주세요.'); }, 10000);
   let got = 0; const ready = (snap) => { if (!snap.metadata.fromCache) { got++; if (got >= 1) { state.loaded = true; clearTimeout(timer); if (!state.readOnly && !local) { hideNote(); setSync('shared'); checkLocalLeftovers(); } if (state.seenAt == null) initSeen(); setTimeout(maybeAskWho, 300);  } } };
   const onErr = e => { clearTimeout(timer); lastErr = (e && (e.message || e.code)) || 'unknown'; setSync('error'); if (e.code !== 'revoked') showNote('일정을 불러오지 못했어요. 위쪽 빨간 표시를 눌러 확인해 주세요.'); };
-  db.collection('events').onSnapshot(s => { state.events = s.docs.map(d => ({ id:d.id, ...d.data() })); ready(s); render(); }, onErr);
-  db.collection('work').onSnapshot(s => { const w = {}; s.docs.forEach(d => { w[d.id] = d.data(); }); state.work = w; render(); }, onErr);
-  db.collection('annivs').onSnapshot(s => { state.annivs = s.docs.map(d => ({ id:d.id, ...d.data() })); render(); }, onErr);
+  const kid = isKid(), parent = !kid;
+  // 아이들은 자기가 들어간 일정만 받아요 (규칙도 같아요)
+  (kid ? db.collection('events').where('people', 'array-contains', state.myWho) : db.collection('events')).onSnapshot(s => { state.events = s.docs.map(d => ({ id:d.id, ...d.data() })); ready(s); render();
+    if (parent && !s.metadata.fromCache) state.events.filter(e => !Array.isArray(e.people) || !e.people.length).slice(0, 300).forEach(e => db.doc('events/' + e.id).update({ people:peopleOf(e).filter(p => PERSONS.includes(p)).concat(peopleOf(e).some(p => PERSONS.includes(p)) ? [] : ['me']) }).catch(() => {}));
+  }, onErr);
+  if (parent) db.collection('work').onSnapshot(s => { const w = {}; s.docs.forEach(d => { w[d.id] = d.data(); }); state.work = w; render(); }, onErr);
+  db.collection('annivs').onSnapshot(s => { state.annivs = s.docs.map(d => ({ id:d.id, ...d.data() })).filter(a => parent || a.who !== 'couple'); render(); }, onErr);
   db.collection('members').onSnapshot(s => { const m = {}; s.docs.forEach(d => { if (PERSONS.includes(d.data().who)) m[d.id] = d.data().who; }); state.members = m; if (state.loaded) maybeAskWho(); render(); }, onErr);
   const showing = bk => state.book === bk;
-  db.collection('ledger').onSnapshot(s => { books.fam.ledger = s.docs.map(d => ({ id:d.id, ...d.data() })); cleanTestLeftovers(); if (!s.metadata.fromCache) repairAuto('fam'); if (showing('fam') && (state.view === 'money' || state.view === 'day')) renderView(); renderNotices(); if (!s.metadata.fromCache) scheduleBudgetCheck(); }, onErr);
-  db.doc('config/budget').onSnapshot(s => { books.fam.budget = s.exists ? s.data() : {}; if (showing('fam') && state.view === 'money') renderView(); renderNotices(); }, onErr);
-  db.doc('config/fixed').onSnapshot(s => { books.fam.fixed = (s.exists && s.data().items) || []; if (showing('fam') && state.view === 'money') renderView(); if (!s.metadata.fromCache) scheduleBudgetCheck(); }, onErr);
-  db.doc('config/catmap').onSnapshot(s => { books.fam.catmap = (s.exists && s.data().map) || {}; }, onErr);
-  db.doc('config/balances').onSnapshot(s => { books.fam.balances = s.exists ? s.data() : {}; if (showing('fam') && state.view === 'money') renderView(); }, onErr);
-  db.collection('inbox').onSnapshot(s => { if (!s.metadata.fromCache && s.docs.length) processInbox(s.docs, 'fam'); }, onErr);
   const mergeLog = () => { state.log = logs.fam.concat(logs.mine); renderBell(); };
-  db.doc('share/cycle').onSnapshot(s => { state.cycShare = s.exists ? s.data() : null; mergeLog(); renderNotices(); if (state.view === 'month' || state.view === 'day' || state.view === 'week') renderView(); }, () => {});
-  db.collection('log').onSnapshot(s => { logs.fam = s.docs.map(d => ({ id:d.id, ...d.data() })); mergeLog(); }, onErr);
+  if (parent) {
+    db.collection('ledger').onSnapshot(s => { books.fam.ledger = s.docs.map(d => ({ id:d.id, ...d.data() })); cleanTestLeftovers(); if (!s.metadata.fromCache) repairAuto('fam'); if (showing('fam') && (state.view === 'money' || state.view === 'day')) renderView(); renderNotices(); if (!s.metadata.fromCache) scheduleBudgetCheck(); }, onErr);
+    db.doc('config/budget').onSnapshot(s => { books.fam.budget = s.exists ? s.data() : {}; if (showing('fam') && state.view === 'money') renderView(); renderNotices(); }, onErr);
+    db.doc('config/fixed').onSnapshot(s => { books.fam.fixed = (s.exists && s.data().items) || []; if (showing('fam') && state.view === 'money') renderView(); if (!s.metadata.fromCache) scheduleBudgetCheck(); }, onErr);
+    db.doc('config/catmap').onSnapshot(s => { books.fam.catmap = (s.exists && s.data().map) || {}; }, onErr);
+    db.doc('config/balances').onSnapshot(s => { books.fam.balances = s.exists ? s.data() : {}; if (showing('fam') && state.view === 'money') renderView(); }, onErr);
+    db.collection('inbox').onSnapshot(s => { if (!s.metadata.fromCache && s.docs.length) processInbox(s.docs, 'fam'); }, onErr);
+    const shareUp = () => { mergeLog(); renderNotices(); if (state.view === 'month' || state.view === 'day' || state.view === 'week') renderView(); };
+    db.doc('share/cycle').onSnapshot(s => { state.cycShare = s.exists ? s.data() : null; shareUp(); }, () => {});
+    db.doc('share/cycle_kid1').onSnapshot(s => { state.kShare = s.exists ? s.data() : null; shareUp(); }, () => {});
+  }
+  (kid ? db.collection('log').where('vis', 'array-contains', state.myWho) : db.collection('log')).onSnapshot(s => { logs.fam = s.docs.map(d => ({ id:d.id, ...d.data() })); mergeLog(); }, onErr);
   if (me) {
-    // 나만 보는 가계부: 규칙상 본인만 읽고 쓸 수 있어요. 아직 준비 전이면 조용히 넘어가요.
+    // 나만 보는 곳(private/<uid>): 규칙상 본인만 읽고 써요.
     const P = `private/${me}/`, pErr = e => { state.mineErr = (e && (e.code || e.message)) || 'error'; };
     const ok = () => { state.mineErr = ''; };
-    db.collection(P + 'ledger').onSnapshot(s => { ok(); books.mine.ledger = s.docs.map(d => ({ id:d.id, ...d.data() })); if (!s.metadata.fromCache && !MINE_OFF) repairAuto('mine'); if (state.view === 'money' || (showing('mine') && state.view === 'day')) renderView(); if (!s.metadata.fromCache) scheduleBudgetCheck(); }, pErr);
-    db.doc(P + 'config/budget').onSnapshot(s => { books.mine.budget = s.exists ? s.data() : {}; if (showing('mine') && state.view === 'money') renderView(); }, pErr);
-    db.doc(P + 'config/fixed').onSnapshot(s => { books.mine.fixed = (s.exists && s.data().items) || []; if (showing('mine') && state.view === 'money') renderView(); if (!s.metadata.fromCache) scheduleBudgetCheck(); }, pErr);
-    db.doc(P + 'config/catmap').onSnapshot(s => { books.mine.catmap = (s.exists && s.data().map) || {}; }, pErr);
-    db.doc(P + 'config/cycle').onSnapshot(s => { const d = s.exists ? s.data() : {}; cyc.periods = d.periods || []; cyc.settings = { share:true, warn:true, alert:true, ...(d.settings || {}) }; cyc.loaded = true; if (state.view === 'month' || state.view === 'day') renderView(); if (!s.metadata.fromCache) { syncCycShare(); cycAlerts(); } }, pErr);
-    db.doc(P + 'config/balances').onSnapshot(s => { books.mine.balances = s.exists ? s.data() : {}; if (showing('mine') && state.view === 'money') renderView(); }, pErr);
-    db.doc(P + 'config/lastInbox').onSnapshot(s => { books.mine.lastInbox = s.exists ? s.data() : null; if (showing('mine') && state.view === 'money') renderView(); }, pErr);
-    db.collection(P + 'inbox').onSnapshot(s => { if (s.metadata.fromCache || !s.docs.length) return; if (MINE_OFF) { s.docs.forEach(d => db.doc(P + 'inbox/' + d.id).delete().catch(() => {})); return; } processInbox(s.docs, 'mine'); }, pErr);
+    if (!MINE_OFF && parent) {
+      db.collection(P + 'ledger').onSnapshot(s => { ok(); books.mine.ledger = s.docs.map(d => ({ id:d.id, ...d.data() })); if (!s.metadata.fromCache) repairAuto('mine'); if (state.view === 'money' || (showing('mine') && state.view === 'day')) renderView(); if (!s.metadata.fromCache) scheduleBudgetCheck(); }, pErr);
+      db.doc(P + 'config/budget').onSnapshot(s => { books.mine.budget = s.exists ? s.data() : {}; if (showing('mine') && state.view === 'money') renderView(); }, pErr);
+      db.doc(P + 'config/fixed').onSnapshot(s => { books.mine.fixed = (s.exists && s.data().items) || []; if (showing('mine') && state.view === 'money') renderView(); if (!s.metadata.fromCache) scheduleBudgetCheck(); }, pErr);
+      db.doc(P + 'config/catmap').onSnapshot(s => { books.mine.catmap = (s.exists && s.data().map) || {}; }, pErr);
+      db.doc(P + 'config/balances').onSnapshot(s => { books.mine.balances = s.exists ? s.data() : {}; if (showing('mine') && state.view === 'money') renderView(); }, pErr);
+      db.doc(P + 'config/lastInbox').onSnapshot(s => { books.mine.lastInbox = s.exists ? s.data() : null; if (showing('mine') && state.view === 'money') renderView(); }, pErr);
+      db.collection(P + 'inbox').onSnapshot(s => { if (s.metadata.fromCache || !s.docs.length) return; processInbox(s.docs, 'mine'); }, pErr);
+      try { if (localStorage.getItem(BOOKKEY) === 'mine') state.book = 'mine'; } catch(e){}
+    } else if (state.myWho === 'me') db.collection(P + 'inbox').onSnapshot(s => { if (s.metadata.fromCache || !s.docs.length) return; s.docs.forEach(d => db.doc(P + 'inbox/' + d.id).delete().catch(() => {})); }, pErr);
+    // 🌙 주기: 엄마는 private, 첫째는 kcycle/<본인> (엄마도 보기만 가능)
+    const onCyc = s => { const d = s.exists ? s.data() : {}; cyc.periods = d.periods || []; cyc.settings = { share:true, warn:true, alert:true, ...(d.settings || {}) }; cyc.loaded = true; if (state.view === 'month' || state.view === 'day') renderView(); if (!s.metadata.fromCache) { syncCycShare(); cycAlerts(); } };
+    if (state.myWho === 'me') db.doc(P + 'config/cycle').onSnapshot(onCyc, pErr);
+    else if (CYC_OWNERS.includes(state.myWho)) db.doc('kcycle/' + state.myWho).onSnapshot(onCyc, () => {});
+    if (state.myWho === 'me') db.doc('kcycle/kid1').onSnapshot(s => { const d = s.exists ? s.data() : {}; kc.periods = d.periods || []; kc.settings = d.settings || {}; kc.loaded = true; if (state.view === 'month' || state.view === 'day' || state.view === 'week') renderView(); }, () => {});
     db.collection(P + 'log').onSnapshot(s => { logs.mine = s.docs.map(d => ({ id:d.id, _p:1, ...d.data() })); mergeLog(); }, pErr);
-    try { if (!MINE_OFF && localStorage.getItem(BOOKKEY) === 'mine') state.book = 'mine'; } catch(e){}
   }
   db.collection('notices').onSnapshot(s => { state.notices = s.docs.map(d => ({ id:d.id, ...d.data() })); renderNotices(); }, onErr);
   db.doc('config/main').onSnapshot(s => { state.config = mergeConfig(s.exists ? s.data() : null); render(); renderPreview(); }, onErr);
@@ -1347,7 +1419,7 @@ function visibleEvents(ds){
   if (state.filter !== 'all') list = list.filter(e => evMatches(e, state.filter));
   return list.sort((a,b) => (a.start||'').localeCompare(b.start||'') || (a.title||'').localeCompare(b.title||''));
 }
-function showWork(){ return ['all','work','hus'].includes(state.filter); }
+function showWork(){ return !isKid() && ['all','work','hus'].includes(state.filter); }
 
 /* ---------- 렌더 ---------- */
 function renderChips(){
@@ -1355,7 +1427,7 @@ function renderChips(){
   const sel = PEOPLE.includes(state.filter) ? state.filter : null;
   $('#chips').innerHTML = chip('all','전체',null)
     + `<button class="chip" id="peopleBtn" data-people aria-haspopup="menu" aria-pressed="${!!sel}">${sel ? `<span class="dot" style="--c:${catVar(sel)}"></span>${esc(catLabel(sel))}` : '대상별'} <span class="caret">▾</span></button>`
-    + chip('family', catLabel('family'), 'family') + chip('anniv', '기념일', 'elder') + chip('work', catLabel('work'), 'work')
+    + chip('family', catLabel('family'), 'family') + chip('anniv', '기념일', 'elder') + (isKid() ? '' : chip('work', catLabel('work'), 'work'))
     + `<label class="search"><input id="q" type="search" placeholder="검색" value="${esc(state.q)}" aria-label="일정 검색"></label>`;
   const q = $('#q'); q.addEventListener('input', () => { state.q = q.value; renderView(); });
 }
@@ -1372,6 +1444,7 @@ function render(){
   $('#quick').placeholder = state.view === 'money' ? (state.book === 'mine' ? '예: 스타벅스 5300 카카오뱅크' : '예: 스타벅스 5300 하나카드') : '예: 11월 1일 4시 네일아트';
   { const hp = $('#help'); if (!hp.dataset.base) hp.dataset.base = hp.textContent; hp.textContent = state.view === 'money' ? '가계부 화면에서는 "사용처 금액 카드"로 적으면 지출로 들어가요. 입금은 "입금 용돈 5만"처럼, 날짜는 "어제"나 "11/2"를 붙이면 돼요.' : hp.dataset.base; }
   $('#moneyBtn').classList.toggle('on', state.view === 'money'); renderWho();
+  { const k = isKid(); $('#moneyBtn').hidden = k; $('#workMode').hidden = k; $('#openSettings').hidden = k; if (k && (state.view === 'money' || state.workMode)) { state.workMode = false; if (state.view === 'money') state.view = 'month'; } }
   $('#hback').hidden = state.view === 'month' && !navStack.length;
   renderView();
 }
@@ -1431,8 +1504,9 @@ function annivList(){
     <div class="help">예: 기념일 2015 5/23 결혼기념일 · 기념일 음력 8/3 시어머니 생신 · 기념일 음력 3/10 할머니 기일</div>`);
 }
 function editAnniv(id, preset){
+  if (!id && isKid()) { toast('기념일은 엄마·아빠가 관리해요'); return; }
   const a = id ? state.annivs.find(x => x.id === id) : (preset || { kind:'birthday', who:state.myWho || 'me', whoText:'', title:'', lunar:false, month:'', day:'', year:'' });
-  if (!a) return; const ro = state.readOnly; const dis = ro ? 'disabled' : '';
+  if (!a) return; const ro = state.readOnly || isKid(); const dis = ro ? 'disabled' : '';
   const whoOpts = AWHO.map(k => `<option value="${k}" ${a.who===k?'selected':''}>${esc(k==='other' ? '기타 (직접 입력)' : (ELDER_LABEL[k] || catLabel(k)))}</option>`).join('');
   openSheet(`
     <div class="sh"><h3>${id ? '기념일' : '기념일 추가'}</h3><button class="ghost" data-close>닫기</button></div>
@@ -2240,9 +2314,9 @@ function monthView(){
     const d = addDays(start, i), ds = ymd(d), hn = holidayName(ds);
     const evs = visibleEvents(ds), w = showWork() ? state.work[ds] : null;
     const red = d.getDay()===0 || hn;
-    const cy = cycDay(ds), sd = shareDay(ds);
-    let inner = `<span class="dn ${red?'sun':d.getDay()===6?'sat':''}"><b>${d.getDate()}</b>${cy ? `<i class="cy ${cy.kind}"></i>` : ''}</span>`;
-    if (sd && sd.kind === 'cond') inner += `<span class="cyx" title="다솜 컨디션 저하 예상">🌧 다솜</span>`;
+    const cy = cycDay(ds), kcy = cycDay(ds, kc);
+    let inner = `<span class="dn ${red?'sun':d.getDay()===6?'sat':''}"><b>${d.getDate()}</b>${cy ? `<i class="cy ${cy.kind}"></i>` : ''}${kcy && kcy.kind !== 'fertile' ? `<i class="cy kc ${kcy.kind}" title="${esc(cycName('kid1'))}"></i>` : ''}</span>`;
+    shareDays(ds).filter(x => x.kind === 'cond').forEach(x => { inner += kidShare(x.s) ? `<span class="cyx kx" title="${esc(cycName(x.s.owner))} 감정 주의">⚠️ ${esc(cycName(x.s.owner))}</span>` : `<span class="cyx" title="다솜 컨디션 저하 예상">🌧 다솜</span>`; });
     if (hn) inner += `<span class="hname">${esc(hn)}</span>`;
     const avs = annivsOn(ds);
     avs.slice(0,2).forEach(x => { inner += `<span class="av" style="--c:${annivColor(x.a)}">${annivIcon(x.a)}${esc(annivTitle(x.a))}</span>`; });
@@ -2283,8 +2357,8 @@ function dayView(){
   const ds = ymd(state.cursor), d = state.cursor, hn = holidayName(ds), type = dayType(ds);
   const w = state.work[ds];
   let h = `<div class="dayhero"><h2>${d.getMonth()+1}월 ${d.getDate()}일 ${WD[d.getDay()]}요일</h2><span class="pill ${type==='holiday'?'hol':''}">${esc(hn || TYPE_LABEL[type] + ' 근무표')}</span></div>`;
-  h += cycCard(ds);
-  { const sd = shareDay(ds); if (sd) h += `<div class="cycard share"><div class="grow"><b>${sd.kind === 'cond' ? '🌧 다솜 컨디션 저하 예상일' : WARN_MSG(sd.d)}</b><div class="help">${sd.kind === 'cond' ? '따뜻한 말 한마디, 디저트, 먼저 하는 설거지 효과 좋음' : '예상일이라 조금 달라질 수 있어요'}</div></div></div>`; }
+  h += cycCard(ds) + kcCard(ds);
+  h += shareDays(ds).map(shareCard).join('');
   if (showWork()) {
     if (w && w.course !== '휴무') {
       const {row} = courseInfo(ds, w.course);
@@ -2353,6 +2427,7 @@ async function addDrafts(){
   $('#addBtn').disabled = true;
   try {
     for (const d of ds) {
+      if (isKid() && ['anniv','money','work'].includes(d.kind)) { toast(d.kind === 'anniv' ? '기념일은 엄마·아빠가 관리해요' : '이건 엄마·아빠 계정에서만 쓸 수 있어요'); continue; }
       if (d.kind === 'anniv') { if (d.a.month && d.a.day) await api.addAnniv(d.a); continue; }
       if (d.kind === 'money') { if (d.amount) await api.addMoney({ type:d.type, amount:d.amount, inst:d.inst || 0, goal:d.goal || '', merchant:d.merchant, card:d.card, cat:d.cat, date:d.date, time:'', who:state.myWho || 'me', memo:'', cancelled:false, review:false, src:'manual' }); continue; }
       if (d.kind === 'notice') { await api.addNotice({ text:d.text, until:d.until }); continue; }
@@ -2546,6 +2621,7 @@ function parseRoster(text){
   return out;
 }
 function settings(){
+  if (isKid()) return;
   const cfg = clone(state.config); let tab = 'weekday';
   const rosterText = t => (cfg.roster[t]||[]).map(r => `${r.c} ${r.s} ${r.e}`).join('\n');
   const tableHtml = list => list.length ? `<div class="tablewrap"><table class="rtable"><thead><tr><th>코스</th><th>시작</th><th>종료</th><th>근무시간</th></tr></thead><tbody>${list.map(r=>`<tr><td>${esc(fmtCourse(r.c))}</td><td>${r.s}</td><td>${r.e}</td><td>${dur(r.s,r.e)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty" style="padding:4px 0">한 줄에 "코스 시작 종료"로 적으면 아래에 표로 정리돼요.</div>';
@@ -2598,7 +2674,7 @@ function closePop(){ $('#pop').hidden = true; }
 function togglePop(btn){
   const pop = $('#pop');
   if (!pop.hidden) { closePop(); return; }
-  pop.innerHTML = PEOPLE.map(k => `<button data-pf="${k}" role="menuitem" aria-pressed="${state.filter===k}"><span class="dot" style="--c:${catVar(k)}"></span>${esc(catLabel(k))}</button>`).join('');
+  pop.innerHTML = (isKid() ? [state.myWho, 'kids'] : PEOPLE).map(k => `<button data-pf="${k}" role="menuitem" aria-pressed="${state.filter===k}"><span class="dot" style="--c:${catVar(k)}"></span>${esc(catLabel(k))}</button>`).join('');
   pop.hidden = false;
   const r = btn.getBoundingClientRect();
   const w = pop.offsetWidth, vw = document.documentElement.clientWidth;
@@ -2627,7 +2703,7 @@ document.addEventListener('click', ev => {
   if (t.dataset.notice) { editNotice(t.dataset.notice); return; }
   if (t.hasAttribute('data-whoami')) { if (FB) accountSheet(); else whoPicker(false); return; }
   if (t.dataset.setwho) { setWho(t.dataset.setwho); return; }
-  if (t.hasAttribute('data-gomoney')) { closeSheet(); navTo('money'); return; }
+  if (t.hasAttribute('data-gomoney')) { if (isKid()) return; closeSheet(); navTo('money'); return; }
   if (t.dataset.money) { editMoney(t.dataset.money); return; }
   if (t.hasAttribute('data-addmoney')) { editMoney(null); return; }
   if (t.hasAttribute('data-budget')) { budgetSheet(); return; }
@@ -2642,6 +2718,7 @@ document.addEventListener('click', ev => {
   if (t.dataset.cycEdit) { cycEdit(t.dataset.cycEdit); return; }
   if (t.hasAttribute('data-cyc-new')) { cycEdit(''); return; }
   if (t.hasAttribute('data-cycsheet')) { if (cycOwner()) cycSheet(); return; }
+  if (t.hasAttribute('data-kcsheet')) { cycSheet('kid'); return; }
   if (t.dataset.balance) { if (!state.readOnly) balanceSheet(t.dataset.balance); return; }
   if (t.hasAttribute('data-addfixed')) { editFixed(null); return; }
   if (t.dataset.fixed) { editFixed(t.dataset.fixed); return; }
@@ -2723,7 +2800,7 @@ try { history.replaceState(null, '', '#' + viewHash()); } catch(e){}
 boot();
 if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); }); }
 /* 휴대폰에 오래 켜 둔 앱도 새 버전을 받도록: 화면에 돌아올 때·30분마다 확인 */
-const APP_VER = 'family-cal-v29';
+const APP_VER = 'family-cal-v30';
 async function checkUpdate(){
   try {
     const t = await (await fetch('sw.js?ts=' + Date.now(), { cache:'no-store' })).text();
