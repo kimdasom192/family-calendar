@@ -1322,6 +1322,48 @@ async function importData(file){
   }
   return writes.length;
 }
+/* 가족 코드 다시 정하기 — 엄마는 모두, 아빠는 엄마 코드만 (실제 변경은 GitHub 작업이 1시간 안에) */
+const codeTargets = w => w === 'me' ? PERSONS : w === 'hus' ? ['me'] : [];
+async function codeTaken(code, except){
+  // 로그인은 코드만으로 사람을 찾으니, 다른 가족과 같은 코드는 안 돼요
+  for (const k of PERSONS) { if (k === except) continue;
+    try { const r = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FB.cfg.apiKey}`, { method:'POST', headers:{ 'content-type':'application/json' }, body:JSON.stringify({ email:WHO_EMAIL(k), password:code, returnSecureToken:false }) }); if (r.ok) return true; } catch(e){} }
+  return false;
+}
+const hm = t => { const d = new Date(t); return `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${pad(d.getMinutes())}`; };
+function codeBlock(){
+  const ts = (db && me && !local) ? codeTargets(state.myWho) : []; if (!ts.length) return '';
+  return `<div class="sec">가족 코드 다시 정하기</div><div class="dcard" style="padding:10px 12px">
+    <p class="help" style="margin:0 0 8px">${state.myWho === 'me' ? '가족이 코드를 잊었을 때 새 코드를 정해 주세요.' : `${esc(catLabel('me'))} 코드를 잊었을 때만 써요.`} 지금 코드는 아무도 볼 수 없어요.</p>
+    <div id="cr_who" style="display:flex;flex-wrap:wrap;gap:6px">${ts.map((k, i) => `<button class="chip" style="flex:none;width:auto" data-crwho="${k}" aria-pressed="${i === 0}"><span class="dot" style="--c:${catVar(k)}"></span>${esc(catLabel(k))}</button>`).join('')}</div>
+    <div class="inrow" style="margin-top:8px"><input id="cr_code" inputmode="numeric" maxlength="12" placeholder="새 코드 (숫자 6자리 이상)" style="flex:1;min-width:0;border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:9px 11px"><button class="primary" id="cr_go">바꾸기</button></div>
+    <div class="help" id="cr_msg" style="margin-top:6px"></div>
+    <p class="help" style="margin:6px 0 0">신청하면 1시간 안에 바뀌어요. 그 사람 휴대폰은 새 코드로 다시 들어와야 할 수 있어요.</p></div>`;
+}
+async function codeWire(root){
+  const box = root.querySelector('#cr_who'); if (!box) return;
+  let target = box.querySelector('[data-crwho]').dataset.crwho;
+  const msg = root.querySelector('#cr_msg'), inp = root.querySelector('#cr_code'), go = root.querySelector('#cr_go');
+  box.querySelectorAll('[data-crwho]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); target = b.dataset.crwho; box.querySelectorAll('[data-crwho]').forEach(x => x.setAttribute('aria-pressed', x === b)); }));
+  const P = `private/${me}/config/`;
+  const show = async () => { try {
+    const q = await db.doc(P + 'codeReq').get(), r = await db.doc(P + 'codeRes').get();
+    if (q.exists) msg.textContent = `⏳ ${catLabel(q.data().who)} 코드 바꾸는 중 (${hm(q.data().at)} 신청 · 1시간 안에 바뀌어요)`;
+    else if (r.exists) msg.textContent = `${r.data().ok ? '✅' : '❌'} ${catLabel(r.data().who)} 코드: ${r.data().msg} (${hm(r.data().at)})`;
+  } catch(e){} };
+  show();
+  go.addEventListener('click', async () => {
+    const v = inp.value.replace(/\s/g, '');
+    if (!/^\d{6,12}$/.test(v)) { msg.textContent = '숫자 6~12자리로 넣어 주세요.'; return; }
+    go.disabled = true; msg.textContent = '확인 중…';
+    try {
+      if (await codeTaken(v, target)) { msg.textContent = '다른 가족 코드와 같아요. 다른 숫자로 정해 주세요.'; go.disabled = false; return; }
+      await db.doc(P + 'codeReq').set({ who:target, code:v, at:Date.now() });
+      inp.value = ''; toast(`${catLabel(target)} 코드 바꾸기를 신청했어요`); await show();
+    } catch(e){ msg.textContent = '신청하지 못했어요: ' + (e.code || e.message); }
+    go.disabled = false;
+  });
+}
 function accountSheet(){
   const who = state.myWho;
   openSheet(`<div class="sh"><h3>내 계정</h3><button class="ghost" data-close>닫기</button></div>
@@ -1330,12 +1372,15 @@ function accountSheet(){
     <div class="help" id="ac_msg"></div>
     ${true ? `<div class="fld"><label for="ac_file">데이터 가져오기 (.json · 일정·가계부 파일)</label><input id="ac_file" type="file" accept=".json,application/json"></div>` : ''}
     ${cycOwner() || kcViewer() ? `<div class="btns" style="margin:0">${cycOwner() ? `<button class="ghost" data-cycsheet>🌙 내 주기 기록 (${cycKid() ? '나와 엄마만' : '나만 보기'})</button>` : ''}${kcViewer() ? `<button class="ghost" data-kcsheet>🌙 ${esc(cycName('kid1'))} 주기 보기</button>` : ''}</div>` : ''}
+    ${codeBlock()}
     <div class="btns"><button class="danger" id="ac_out">이 휴대폰에서 나가기</button></div>`,
   root => {
     const msg = root.querySelector('#ac_msg');
+    codeWire(root);
     root.querySelector('#ac_save').addEventListener('click', async () => {
       const v = root.querySelector('#ac_code').value.replace(/\s/g,'');
       if (v.length < 6) { msg.textContent = '6자리 이상 넣어 주세요.'; return; }
+      if (!local && FB && await codeTaken(v, who)) { msg.textContent = '다른 가족 코드와 같아요. 다른 숫자로 정해 주세요.'; return; }
       try { await FB.A.updatePassword(FB.auth.currentUser, v); msg.textContent = '코드를 바꿨어요. 다음부터 새 코드로 들어와요.'; root.querySelector('#ac_code').value = ''; }
       catch(e){ msg.textContent = String(e.code).includes('recent-login') ? '보안을 위해 나갔다가 다시 들어온 뒤 바꿔 주세요.' : '바꾸지 못했어요: ' + (e.code || e.message); }
     });
@@ -2801,7 +2846,7 @@ try { history.replaceState(null, '', '#' + viewHash()); } catch(e){}
 boot();
 if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); }); }
 /* 휴대폰에 오래 켜 둔 앱도 새 버전을 받도록: 화면에 돌아올 때·30분마다 확인 */
-const APP_VER = 'family-cal-v31';
+const APP_VER = 'family-cal-v32';
 async function checkUpdate(){
   try {
     const t = await (await fetch('sw.js?ts=' + Date.now(), { cache:'no-store' })).text();
