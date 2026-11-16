@@ -1,0 +1,25 @@
+name: 보안 규칙 시험·적용
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: '시험 통과 후 적용'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  rules:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: push/package-lock.json
+      - run: npm ci --prefix push --omit=dev --no-audit --no-fund
+      - run: node push/rules/deploy.mjs ${{ inputs.apply && '--apply' || '' }}
+        env:
+          FIREBASE_SA: ${{ secrets.FIREBASE_SA }}

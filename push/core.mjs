@@ -15,6 +15,9 @@ const PERSONS = ['me', 'hus', 'kid1', 'kid2'];
 const DEF = { me:'엄마', hus:'아빠', kid1:'첫째', kid2:'둘째', couple:'부부', family:'가족', kids:'아이들', work:'근무' };
 const ELDER = { mil:'시어머니', fil:'시아버지', mom:'엄마', dad:'아빠' };
 const KIND = { event:'일정', work:'근무', anniv:'기념일', notice:'공지' };
+const PARENTS = ['me', 'hus'];
+const KID_COND = nm => `⚠️ ${nm} 감정 주의 · 오늘은 잔소리 쉬고 말 한마디 부드럽게 🫶`;
+const KID_WARN = (nm, d) => d >= 2 ? `⚠️ ${nm} 감정 주의보 D-${d} · 말투 미리 말랑하게 🍬` : `⚠️ ${nm} 감정 주의보 내일 발령 · 오늘부터 부드럽게 🫶`;
 const ACT = { new:'새', edit:'바뀐', del:'지운' };
 
 function makeNames(cfg){ const n = (cfg && cfg.names) || {}; return k => n[k] || DEF[k] || ''; }
@@ -54,6 +57,7 @@ export function cycPred(periods, today){
 function logMsg(x, L, members, priv){
   if (x.type === 'cycle') {
     if (priv) return { title:'🔒 개인 알림', body:'앱에서 확인해 주세요', tag:'cyc' };
+    if (String(x.id || '').startsWith('kcyc_')) return { title:`⚠️ ${L(x.owner || 'kid1')} 감정 주의`, body:(x.changes || [])[0] || '', tag:'kcyc' };
     const start = String(x.id || '').startsWith('cyc_start');
     return { title:start ? '🌧 배려 모드' : '⚠️ 다솜주의보', body:(x.changes || [])[0] || '', tag:'cyc-share' };
   }
@@ -94,11 +98,36 @@ export async function run(db, send, now = new Date(), log = console.log){
     }
   }
 
+  // 1-2) 첫째 주기: 본인 🔔(2일 전·당일), 아빠 🔔(3일 전 '감정 주의보')
+  for (const kw of ['kid1']) {
+    const kUid = Object.keys(members).find(u => members[u] === kw);
+    if (!kUid || !daytime) continue;
+    const c = await db.get(`kcycle/${kw}`);
+    const st = { share:true, warn:true, alert:true, ...((c && c.settings) || {}) };
+    const p = c && cycPred(c.periods, today);
+    if (!p || p.ongoing) continue;
+    const left = dd0(td, p.next);
+    if (st.alert !== false && (left === 1 || left === 2 || left === 0)) {
+      const key = left === 0 ? `cyc_${p.next}_d0` : `cyc_${p.next}_d2`;
+      if (!(await db.get(`private/${kUid}/log/${key}`))) await db.set(`private/${kUid}/log/${key}`, { act:'alert', type:'cycle', lv:0, ref:'', date:td, changes:[left === 0 ? '🌙 오늘이 예정일이에요' : `🌙 예정일이 ${left}일 남았어요 (${+p.next.slice(5, 7)}/${+p.next.slice(8)})`], by:'system', at:now.getTime() });
+    }
+    if (st.warn !== false && !p.overdue && left >= 1 && left <= 3) {
+      const wk = `log/kcyc_warn_${kw}_${p.next}`;
+      if (!(await db.get(wk))) await db.set(wk, { act:'alert', type:'cycle', lv:90, ref:'', date:td, to:['hus'], vis:['hus'], owner:kw, changes:[KID_WARN(L(kw), left)], by:'system', at:now.getTime() });
+    }
+  }
+
   const annivs = await db.list('annivs');
   // 다솜 컨디션 표시 (실제 기간 · 예정일 지나 미뤄지는 중) — 날마다 아침 한 번
-  const share = await db.get('share/cycle');
-  const condToday = share && ((share.cond || []).some(c => td >= c.from && td <= c.to) || (share.roll && td >= share.roll.from && td <= share.roll.until));
-  const startedToday = condToday && !!(await db.get(`log/cyc_start_${td}`));
+  // 컨디션 표시(다솜 · 첫째): 실제 기간 · 예정일 지나 미뤄지는 중 — 날마다 아침 한 번
+  const conds = [];
+  for (const [sid, startId] of [['share/cycle', `log/cyc_start_${td}`], ['share/cycle_kid1', `log/kcyc_start_kid1_${td}`]]) {
+    const sh = await db.get(sid);
+    const on = sh && ((sh.cond || []).some(c => td >= c.from && td <= c.to) || (sh.roll && td >= sh.roll.from && td <= sh.roll.until));
+    if (!on || (await db.get(startId))) continue; // 시작한 날은 '시작' 알림이 이미 가요
+    const kid = sh.owner && sh.owner !== 'me';
+    conds.push({ to:sh.to || [], key:`cond:${kid ? sh.owner + ':' : ''}${td}`, title:kid ? `⚠️ ${L(sh.owner)} 감정 주의` : '🌧 다솜 컨디션', body:kid ? KID_COND(L(sh.owner)) : '다솜 컨디션 저하 중 · 따뜻한 말 한마디 + 디저트 효과 좋음 🍰' });
+  }
   let sentTotal = 0;
   for (const uid of Object.keys(members)) {
     const who = members[uid];
@@ -114,7 +143,8 @@ export async function run(db, send, now = new Date(), log = console.log){
 
     // 휴대폰 시계가 조금 달라도 놓치지 않게 2분 겹쳐서 읽고, 이미 보낸 건 id로 건너뛰어요
     const from = since - 2 * 60e3;
-    const fam = (await db.query('log', 'at', from)).filter(x => x.by && x.by !== uid && (!x.to || x.to.includes(who)));
+    // 아이들은 자기에게 보이는 소식(vis)만 받아요
+    const fam = (await db.query('log', 'at', from)).filter(x => x.by && x.by !== uid && (!x.to || x.to.includes(who)) && (PARENTS.includes(who) || (x.vis || []).includes(who)));
     const mine = await db.query(`private/${uid}/log`, 'at', from);
     for (const [arr, priv] of [[fam, false], [mine, true]]) for (const x of arr) {
       const lk = `log:${priv ? 'p' : 'f'}:${x.id}`; if (sent[lk]) continue; sent[lk] = now.getTime();
@@ -124,6 +154,7 @@ export async function run(db, send, now = new Date(), log = console.log){
     // 기념일: 한 달 전·일주일 전·당일 (오전 9시 이후)
     if (daytime) for (const a of annivs) {
       if (!a.month || !a.day) continue;
+      if (!PARENTS.includes(who) && a.who === 'couple') continue;
       for (const Y of [today.getFullYear(), today.getFullYear() + 1]) for (const ds of annivOcc(a, Y)) {
         const d = dd0(td, ds); if (![30, 7, 0].includes(d)) continue;
         const key = `anniv:${a.id}:${ds}:${d}`; if (sent[key]) continue;
@@ -131,9 +162,9 @@ export async function run(db, send, now = new Date(), log = console.log){
         msgs.push({ title:`${annivIcon(a)}${annivTitle(a, L)}`, body:d === 0 ? `오늘이에요 · ${dLabel(ds)}` : `D-${d} · ${dLabel(ds)}${d === 30 ? ' (한 달 남았어요)' : ''}`, tag:'anniv', at:now.getTime() });
       }
     }
-    if (condToday && daytime && !startedToday && (share.to || []).includes(who)) {
-      const key = `cond:${td}`;
-      if (!sent[key]) { sent[key] = now.getTime(); msgs.push({ title:'🌧 다솜 컨디션', body:'다솜 컨디션 저하 중 · 따뜻한 말 한마디 + 디저트 효과 좋음 🍰', tag:'cond', at:now.getTime() }); }
+    if (daytime) for (const c of conds) {
+      if (!c.to.includes(who) || sent[c.key]) continue;
+      sent[c.key] = now.getTime(); msgs.push({ title:c.title, body:c.body, tag:'cond', at:now.getTime() });
     }
     // 연결 시험
     let testAt = st.testAt || 0;
