@@ -739,6 +739,7 @@ function parseLine(line, base){
     if (/(부부|우리\s*둘|결혼\s*기념)/.test(s) || (ps.length === 1 && hh && new RegExp(`(${words.hus.join('|')})\\s*(이랑|랑|하고|와|과)(?=\\s|$)`).test(s))) ps.push('me','hus');
     const uniq = PERSONS.filter(p => ps.includes(p));
     if (uniq.length) { people = uniq; cat = catFromPeople(uniq); }
+    else if (isKid()) cat = self; // 아이 계정: 이름을 안 쓰면 내 일정
     else if (/(둘이서?|데이트)/.test(s)) cat = 'couple';
     else if (/(아이|어린이집|유치원|학교|학원|등원|하원|소풍|방과후|학부모|상담주간|운동회|체험학습)/.test(s)) cat = 'kids';
     else cat = self;
@@ -2412,7 +2413,7 @@ function renderPreview(){
     if (d.kind === 'anniv') { const a = d.a, o = a.month && a.day ? nextOcc(a) : null;
       return `<div class="pv"><span class="cbtn" style="--c:${annivColor(a)}">기념일</span><span class="pt">${annivIcon(a)}${esc(annivTitle(a))} · ${a.month&&a.day?esc(annivDateLabel(a)):'날짜 없음'}</span><span class="hint">${o ? `다음: ${fromYmd(o.date).getMonth()+1}/${fromYmd(o.date).getDate()}${annivCount(a,o.n)?' · '+annivCount(a,o.n):''}` : d.notes.join(' · ')}</span></div>`; }
     if (d.kind === 'money') return `<div class="pv"><span class="cbtn" style="--c:${d.type === 'in' ? 'var(--accent)' : d.type === 'save' ? 'var(--sat)' : 'var(--sun)'}">${TYPE_KO[d.type]}</span><span class="pt">${esc(d.merchant)} · ${d.amount ? won(d.amount) : '금액?'} · ${esc(d.card)} · ${esc(d.cat)}${d.inst ? ` · ${d.inst}개월` : ''}</span><span class="hint">${dLabel(d.date).replace(/^\d+월 /,'')}${d.notes.length ? ' · ' + esc(d.notes.join(' · ')) : ''}</span></div>`;
-    if (d.kind === 'cycle') return `<div class="pv"><span class="pd">${dLabel(d.date)}</span><span class="cbtn" style="--c:var(--cyc)">🌙</span><span class="pt">${d.act === 'end' ? '끝난 날' : '시작한 날'} 기록</span><span class="hint">${d.notes.length ? esc(d.notes[0]) : '🔒 나만 보여요'}</span></div>`;
+    if (d.kind === 'cycle') return `<div class="pv"><span class="pd">${dLabel(d.date)}</span><span class="cbtn" style="--c:var(--cyc)">🌙</span><span class="pt">${d.act === 'end' ? '끝난 날' : '시작한 날'} 기록</span><span class="hint">${d.notes.length ? esc(d.notes[0]) : (cycKid() ? '🔒 나와 엄마만 보여요' : '🔒 나만 보여요')}</span></div>`;
     if (d.kind === 'notice') return `<div class="pv"><span class="cbtn" style="--c:var(--accent)">공지</span><span class="pt">${esc(d.text)}</span><span class="hint">${d.until ? dLabel(d.until)+'까지' : '기한 없음'}</span></div>`;
     if (d.kind === 'work') {
       const {row} = courseInfo(d.date, d.course);
@@ -2800,7 +2801,7 @@ try { history.replaceState(null, '', '#' + viewHash()); } catch(e){}
 boot();
 if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); }); }
 /* 휴대폰에 오래 켜 둔 앱도 새 버전을 받도록: 화면에 돌아올 때·30분마다 확인 */
-const APP_VER = 'family-cal-v30';
+const APP_VER = 'family-cal-v31';
 async function checkUpdate(){
   try {
     const t = await (await fetch('sw.js?ts=' + Date.now(), { cache:'no-store' })).text();
