@@ -144,6 +144,9 @@ button.bar{display:block;width:100%;border:0;background:none;padding:0;text-alig
 .go{color:var(--muted);font-weight:400}
 .newtag{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.04em;color:var(--surface);background:var(--sun);border-radius:4px;padding:0 4px;margin-left:4px;vertical-align:1px}
 .ev.isnew{outline:1.5px solid var(--sun);outline-offset:-1px}
+.ev.bar{border-radius:0;border-left:0;margin-left:-3px;margin-right:-4px;padding-left:4px;position:relative;z-index:1;font-weight:600}
+.ev.bar.s{border-left:2px solid var(--c);border-radius:3px 0 0 3px;margin-left:0;padding-left:3px}
+.ev.bar.e{margin-right:0;border-top-right-radius:3px;border-bottom-right-radius:3px}
 .sync{display:inline-flex;align-items:center;gap:5px;border:0;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:600;letter-spacing:0;background:var(--surface2);color:var(--muted)}
 .sync::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
 .sync.ok{color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent)}
@@ -542,6 +545,16 @@ function parseAnniv(txt){
 }
 const EMOJI = ['🎂','🎉','🎁','❤️','💍','🌹','🍽️','☕','🍻','🛒','🏥','💊','🦷','💇‍♀️','💅','🏫','📚','✏️','🎹','⚽','🏊','🎨','🎬','🎤','🚌','🚗','✈️','🏖️','⛺','🏠','🧹','💰','📞','💼','👶','🐶','⭐','📌','⏰','🙏'];
 function evTitle(e){ return (e.emoji ? e.emoji + ' ' : '') + (e.title || ''); }
+/* 여러 날 일정 (휴가·여행): date ~ endDate */
+const evEnd = e => e.endDate && e.endDate > e.date ? e.endDate : e.date;
+const isSpan = e => evEnd(e) !== e.date;
+const spanDays = e => Math.round((fromYmd(evEnd(e)) - fromYmd(e.date)) / 864e5) + 1;
+const shortD = ds => `${+ds.slice(5,7)}/${+ds.slice(8)}`;
+const spanLabel = e => `${shortD(e.date)}~${shortD(evEnd(e))} · ${spanDays(e)}일`;
+function evTm(e, ds){
+  if (isSpan(e)) { const n = Math.round((fromYmd(ds || e.date) - fromYmd(e.date)) / 864e5) + 1; return `${n}일째<br>/ ${spanDays(e)}일`; }
+  return e.start ? fmtTime(e.start) + (e.end ? `<br>~ ${fmtTime(e.end)}` : '') : '하루 종일';
+}
 function emojiField(cur, ro){
   return `<div class="fld"><label>이모티콘</label><div class="emo-row"><button type="button" class="emo-cur" id="emo_cur" ${ro?'disabled':''} aria-label="이모티콘 고르기">${cur || '+'}</button><span class="help" id="emo_hint">${cur ? '눌러서 바꾸기' : '눌러서 고르기 · 제목에 직접 입력해도 돼요'}</span></div>
     <div class="emo-grid" id="emo_grid" hidden><button type="button" class="none" data-emo="">없음</button>${EMOJI.map(x => `<button type="button" data-emo="${x}" aria-pressed="${x===cur}">${x}</button>`).join('')}</div></div>`;
@@ -640,7 +653,15 @@ function parseLine(line, base){
   let date = null, m;
   const cut = mm => { s = s.slice(0, mm.index) + ' ' + s.slice(mm.index + mm[0].length); };
 
-  if ((m = s.match(/(\d{4})\s*[.\-\/년]\s*(\d{1,2})\s*[.\-\/월]\s*(\d{1,2})\s*일?/))) { date = new Date(+m[1], m[2]-1, +m[3]); cut(m); }
+  // 여러 날: 11/20~11/23 · 11/20~23 · 12월 24일~26일 · 12월 30일부터 1월 2일까지 · 20일~23일 · 2박3일
+  let endDate = null;
+  const mkEnd = (sd, mo, dy) => { let e2 = new Date(sd.getFullYear(), mo - 1, dy); if (e2 < sd) e2 = new Date(sd.getFullYear() + 1, mo - 1, dy); return e2; };
+  const SEP = '\\s*(?:~|-|–|부터)\\s*', TIL = '(?:\\s*일)?(?:\\s*까지)?(?![\\d시:분])';
+  if ((m = s.match(new RegExp(`(\\d{1,2})\\s*[\\/.]\\s*(\\d{1,2})${SEP}(?:(\\d{1,2})\\s*[\\/.]\\s*)?(\\d{1,2})${TIL}`)))) { date = guessDate(+m[1], +m[2]); endDate = mkEnd(date, +(m[3] || m[1]), +m[4]); cut(m); }
+  else if ((m = s.match(new RegExp(`(\\d{1,2})\\s*월\\s*(\\d{1,2})\\s*일?${SEP}(?:(\\d{1,2})\\s*월\\s*)?(\\d{1,2})${TIL}`)))) { date = guessDate(+m[1], +m[2]); endDate = mkEnd(date, +(m[3] || m[1]), +m[4]); cut(m); }
+  else if ((m = s.match(new RegExp(`(^|[^\\d\\/.])(\\d{1,2})\\s*일?${SEP}(\\d{1,2})\\s*일(?:\\s*까지)?(?![가-힣\\d])`)))) { date = new Date(base.getFullYear(), base.getMonth(), +m[2]); endDate = mkEnd(date, base.getMonth() + 1, +m[3]); s = s.slice(0, m.index + m[1].length) + ' ' + s.slice(m.index + m[0].length); }
+  if (date) {}
+  else if ((m = s.match(/(\d{4})\s*[.\-\/년]\s*(\d{1,2})\s*[.\-\/월]\s*(\d{1,2})\s*일?/))) { date = new Date(+m[1], m[2]-1, +m[3]); cut(m); }
   else if ((m = s.match(/(\d{1,2})\s*월\s*(\d{1,2})(?:\s*일)?(?![\d시:분])/))) { date = guessDate(+m[1], +m[2]); cut(m); }
   else if ((m = s.match(/(^|[^\d:])(\d{1,2})\s*[\/.]\s*(\d{1,2})(?![\d:])/))) { date = guessDate(+m[2], +m[3]); s = s.slice(0, m.index + m[1].length) + ' ' + s.slice(m.index + m[0].length); }
   else if ((m = s.match(/^\s*(\d{1,2})\s+(\d{1,2})(?![\d시:분])/)) && +m[1] >= 1 && +m[1] <= 12 && +m[2] >= 1 && +m[2] <= 31) { date = guessDate(+m[1], +m[2]); cut(m); }
@@ -658,6 +679,8 @@ function parseLine(line, base){
   }
   if (!date) { date = new Date(base); notes.push('날짜 없음 → 보고 있는 날'); }
   const ds = ymd(date);
+  { const nb = s.match(/(\d)\s*박\s*(\d)\s*일/); if (!endDate && nb && +nb[2] >= 2) endDate = addDays(date, +nb[2] - 1); }
+  const eds = endDate && ymd(endDate) > ds && dd0(ds, ymd(endDate)) <= 60 ? ymd(endDate) : null;
 
   // 남편 근무
   const _hn = (state.config.names.hus||'').replace(/[^가-힣A-Za-z]/g,''); const quick = s.match(new RegExp(`^\\s*(?:근무|남편|신랑|[가-힣]{2,3}\\s*근무${_hn ? '|(?:' + (state.config.names.surname||'') + ')?' + _hn : ''})?\\s*(오전|오후|전|후)\\s*(\\d{1,2})\\s*(?:코스)?\\s*(?:근무)?\\s*$`));
@@ -752,7 +775,7 @@ function parseLine(line, base){
   s = s.replace(/(^|\s)(아이들|애들)(이랑|하고|은|는|이|의)?(?=\s|$)/g, ' ');
   s = s.replace(/(^|\s)(에|에는|부터|까지|~|-)(?=\s|$)/g, ' ').replace(/\s+/g,' ').trim().replace(/^[,·:]+|[,·:]+$/g,'').trim();
   const title = s || '일정';
-  return { kind:'event', date:ds, start, end, title, cat, people, notes };
+  return { kind:'event', date:ds, ...(eds ? { endDate:eds } : {}), start, end, title, cat, people, notes };
 }
 
 /* ---------- 저장소 (공유 db, 없으면 이 기기) ---------- */
@@ -767,12 +790,12 @@ function mergeConfig(c){
 }
 let me = null;
 function stamp(){ return me ? { at:Date.now(), by:me } : { at:Date.now() }; }
-function descEvent(e){ return `${evTitle(e)} (${evLabel(e)})`; }
+function descEvent(e){ return `${evTitle(e)}${isSpan(e) ? ` · ${spanLabel(e)}` : ''} (${evLabel(e)})`; }
 function tlabel(e){ return e.start ? fmtTime(e.start) + (e.end ? ' ~ ' + fmtTime(e.end) : '') : '하루 종일'; }
 function diffEvent(a, b){
   const c = [];
   if (!a) return c;
-  if (a.date !== b.date) c.push(`날짜: ${dLabel(a.date)} → ${dLabel(b.date)}`);
+  if (a.date !== b.date || evEnd(a) !== evEnd(b)) c.push(isSpan(a) || isSpan(b) ? `날짜: ${isSpan(a) ? spanLabel(a) : dLabel(a.date)} → ${isSpan(b) ? spanLabel(b) : dLabel(b.date)}` : `날짜: ${dLabel(a.date)} → ${dLabel(b.date)}`);
   if ((a.start||'') !== (b.start||'') || (a.end||'') !== (b.end||'')) c.push(`시간: ${tlabel(a)} → ${tlabel(b)}`);
   if ((a.title||'') !== (b.title||'') || (a.emoji||'') !== (b.emoji||'')) c.push(`내용: ${evTitle(a)} → ${evTitle(b)}`);
   if (evLabel(a) !== evLabel(b)) c.push(`대상: ${evLabel(a)} → ${evLabel(b)}`);
@@ -1461,9 +1484,10 @@ async function boot(){
 
 /* ---------- 필터 ---------- */
 function visibleEvents(ds){
-  let list = state.events.filter(e => e.date === ds);
+  let list = state.events.filter(e => e.date === ds || (e.endDate && e.date < ds && ds <= e.endDate));
   if (state.filter !== 'all') list = list.filter(e => evMatches(e, state.filter));
-  return list.sort((a,b) => (a.start||'').localeCompare(b.start||'') || (a.title||'').localeCompare(b.title||''));
+  // 여러 날 일정은 맨 위에, 먼저 시작한 것부터 (달력에서 막대가 줄을 맞추게)
+  return list.sort((a,b) => (isSpan(b) - isSpan(a)) || (isSpan(a) ? a.date.localeCompare(b.date) || (evEnd(b)).localeCompare(evEnd(a)) || String(a.id).localeCompare(String(b.id)) : 0) || (a.start||'').localeCompare(b.start||'') || (a.title||'').localeCompare(b.title||''));
 }
 function showWork(){ return !isKid() && ['all','work','hus'].includes(state.filter); }
 
@@ -2362,14 +2386,18 @@ function monthView(){
     const red = d.getDay()===0 || hn;
     const cy = cycDay(ds), kcy = cycDay(ds, kc);
     let inner = `<span class="dn ${red?'sun':d.getDay()===6?'sat':''}"><b>${d.getDate()}</b>${cy ? `<i class="cy ${cy.kind}"></i>` : ''}${kcy && kcy.kind !== 'fertile' ? `<i class="cy kc ${kcy.kind}" title="${esc(cycName('kid1'))}"></i>` : ''}</span>`;
+    const bars = evs.filter(isSpan).slice(0, 2);
+    bars.forEach(e => { const st = e.date === ds, en = evEnd(e) === ds, row = st || d.getDay() === 0 || i === 0;
+      inner += `<span class="ev bar ${st ? 's' : ''} ${en ? 'e' : ''} ${isNew(e)?'isnew':''}" style="${evStyle(e)}">${row ? esc(evTitle(e)) : '&nbsp;'}</span>`; });
     shareDays(ds).filter(x => x.kind === 'cond').forEach(x => { inner += kidShare(x.s) ? `<span class="cyx kx" title="${esc(cycName(x.s.owner))} 감정 주의">⚠️ ${esc(cycName(x.s.owner))}</span>` : `<span class="cyx" title="다솜 컨디션 저하 예상">🌧 다솜</span>`; });
     if (hn) inner += `<span class="hname">${esc(hn)}</span>`;
     const avs = annivsOn(ds);
     avs.slice(0,2).forEach(x => { inner += `<span class="av" style="--c:${annivColor(x.a)}">${annivIcon(x.a)}${esc(annivTitle(x.a))}</span>`; });
     if (w) inner += `<span class="wk ${w.course==='휴무'?'off':''}">${esc(workText(ds,w,true))}</span>`;
-    const max = Math.max(1, 3 - (w ? 1 : 0) - Math.min(avs.length, 2));
-    evs.slice(0,max).forEach(e => { inner += `<span class="ev ${evCat(e)==='multi'?'multi':''} ${isNew(e)?'isnew':''}" style="${evStyle(e)}">${esc(evTitle(e))}</span>`; });
-    if (evs.length > max) inner += `<span class="more">+${evs.length-max}</span>`;
+    const rest = evs.filter(e => !bars.includes(e));
+    const max = Math.max(1, 3 - (w ? 1 : 0) - Math.min(avs.length, 2) - bars.length);
+    rest.slice(0,max).forEach(e => { inner += `<span class="ev ${evCat(e)==='multi'?'multi':''} ${isNew(e)?'isnew':''}" style="${evStyle(e)}">${esc(evTitle(e))}</span>`; });
+    if (rest.length > max) inner += `<span class="more">+${rest.length-max}</span>`;
     h += `<button class="cell ${d.getMonth()!==c.getMonth()?'out':''} ${ds===td?'today':''} ${state.workMode?'pick':''}" data-day="${ds}" aria-label="${esc(dLabel(ds))}">${inner}</button>`;
   }
   return h + '</div>' + (state.loaded || local ? '' : '<p class="empty">일정을 불러오는 중…</p>');
@@ -2386,7 +2414,7 @@ function itemsHtml(ds){
     h += `<button class="item work" data-work="${ds}"><span class="tm">${row && w.course!=='휴무' ? `${row.s}<br>${row.e}` : ''}</span><span class="it"><span class="tag" style="--c:${catVar('work')}"><span class="dot" style="--c:${catVar('work')}"></span>${esc(catLabel('work'))}</span><span class="nm">${esc(workText(ds,w))}</span>${row && w.course!=='휴무' ? `<span class="memo">${dur(row.s,row.e)} 근무</span>`:''}</span></button>`;
   }
   visibleEvents(ds).forEach(e => {
-    h += `<button class="item" data-ev="${esc(e.id)}"><span class="tm">${e.start ? fmtTime(e.start) + (e.end ? `<br>~ ${fmtTime(e.end)}` : '') : '하루 종일'}</span><span class="it"><span class="tag" style="--c:${evColors(e)[0]}">${evDots(e)}${esc(evLabel(e))}</span><span class="nm">${esc(evTitle(e))}${isNew(e)?'<span class="newtag">NEW</span>':''}</span>${e.memo ? `<span class="memo">${esc(e.memo)}</span>`:''}${phStrip(e)}</span></button>`;
+    h += `<button class="item" data-ev="${esc(e.id)}"><span class="tm">${evTm(e, ds)}</span><span class="it"><span class="tag" style="--c:${evColors(e)[0]}">${evDots(e)}${esc(evLabel(e))}</span><span class="nm">${esc(evTitle(e))}${isNew(e)?'<span class="newtag">NEW</span>':''}</span>${e.memo ? `<span class="memo">${esc(e.memo)}</span>`:''}${phStrip(e)}</span></button>`;
   });
   return h;
 }
@@ -2421,7 +2449,7 @@ function dayView(){
   if (ai) h += `<div class="dcard" style="margin-bottom:10px"><div class="items">${ai}</div></div>`;
   const evs = visibleEvents(ds);
   h += `<div class="sec">일정 ${evs.length}건</div><div class="dcard"><div class="items">`;
-  h += evs.length ? evs.map(e => `<button class="item" data-ev="${esc(e.id)}"><span class="tm">${e.start ? fmtTime(e.start) + (e.end ? `<br>~ ${fmtTime(e.end)}` : '') : '하루 종일'}</span><span class="it"><span class="tag" style="--c:${evColors(e)[0]}">${evDots(e)}${esc(evLabel(e))}</span><span class="nm">${esc(evTitle(e))}${isNew(e)?'<span class="newtag">NEW</span>':''}</span>${e.memo?`<span class="memo">${esc(e.memo)}</span>`:''}${phStrip(e)}</span></button>`).join('')
+  h += evs.length ? evs.map(e => `<button class="item" data-ev="${esc(e.id)}"><span class="tm">${evTm(e, ds)}</span><span class="it"><span class="tag" style="--c:${evColors(e)[0]}">${evDots(e)}${esc(evLabel(e))}</span><span class="nm">${esc(evTitle(e))}${isNew(e)?'<span class="newtag">NEW</span>':''}</span>${e.memo?`<span class="memo">${esc(e.memo)}</span>`:''}${phStrip(e)}</span></button>`).join('')
     : `<div class="empty">아직 일정이 없어요. 위 버튼으로 자세히 넣거나, 아래 입력칸에 "3시 병원"처럼 적으면 이 날에 들어가요.</div>`;
   return h + '</div></div>';
 }
@@ -2435,7 +2463,7 @@ function searchView(){
   const up = dates.filter(d => d >= td), past = dates.filter(d => d < td).reverse();
   const block = list => list.map(ds => `<section class="dcard"><button class="dhead" data-goday="${ds}"><span class="d">${dLabel(ds)}</span></button><div class="items">${
       (workHits.find(([d])=>d===ds) ? (() => { const w = state.work[ds]; return `<button class="item work" data-work="${ds}"><span class="tm"></span><span class="it"><span class="nm">${esc(workText(ds,w))}</span></span></button>`; })() : '') +
-      hits.filter(e=>e.date===ds).sort((a,b)=>(a.start||'').localeCompare(b.start||'')).map(e => `<button class="item" data-ev="${esc(e.id)}"><span class="tm">${e.start?fmtTime(e.start):'하루 종일'}</span><span class="it"><span class="tag" style="--c:${evColors(e)[0]}">${evDots(e)}${esc(evLabel(e))}</span><span class="nm">${esc(evTitle(e))}${isNew(e)?'<span class="newtag">NEW</span>':''}</span></span></button>`).join('')
+      hits.filter(e=>e.date===ds).sort((a,b)=>(a.start||'').localeCompare(b.start||'')).map(e => `<button class="item" data-ev="${esc(e.id)}"><span class="tm">${isSpan(e) ? spanLabel(e).replace(' · ', '<br>') : e.start?fmtTime(e.start):'하루 종일'}</span><span class="it"><span class="tag" style="--c:${evColors(e)[0]}">${evDots(e)}${esc(evLabel(e))}</span><span class="nm">${esc(evTitle(e))}${isNew(e)?'<span class="newtag">NEW</span>':''}</span></span></button>`).join('')
     }</div></section>`).join('');
   if (!dates.length) return `<div class="empty">"${esc(state.q)}"에 맞는 일정이 없어요.</div>`;
   return `${up.length?`<div class="sec" style="margin-top:0">다가오는 일정 ${up.length}일</div><div class="days">${block(up)}</div>`:''}${past.length?`<div class="sec">지난 일정</div><div class="days">${block(past)}</div>`:''}`;
@@ -2464,7 +2492,7 @@ function renderPreview(){
       const {row} = courseInfo(d.date, d.course);
       return `<div class="pv"><span class="pd">${dLabel(d.date)}</span><span class="cbtn" style="--c:${catVar('work')}">근무</span><span class="pt">${d.course==='휴무'?'휴무':`${TYPE_LABEL[dayType(d.date)]} ${esc(fmtCourse(d.course))} ${row?`${row.s}–${row.e}`:'(시간 미등록)'}`}</span></div>`;
     }
-    return `<div class="pv"><span class="pd">${dLabel(d.date)}${d.start?' '+fmtTime(d.start):''}${d.end?'~'+fmtTime(d.end).replace(/오전 |오후 /,''):''}</span><button class="cbtn" data-cyc="${i}" style="--c:${evColors(d)[0]}" title="눌러서 대상 바꾸기">${esc(evLabel(d))}</button><span class="pt">${esc(d.title)}</span>${d.notes.length?`<span class="hint">${esc(d.notes.join(' · '))}</span>`:''}</div>`;
+    return `<div class="pv"><span class="pd">${d.endDate ? spanLabel(d) : dLabel(d.date)}${d.start?' '+fmtTime(d.start):''}${d.end?'~'+fmtTime(d.end).replace(/오전 |오후 /,''):''}</span><button class="cbtn" data-cyc="${i}" style="--c:${evColors(d)[0]}" title="눌러서 대상 바꾸기">${esc(evLabel(d))}</button><span class="pt">${esc(d.title)}</span>${d.notes.length?`<span class="hint">${esc(d.notes.join(' · '))}</span>`:''}</div>`;
   }).join('');
 }
 async function addDrafts(){
@@ -2479,7 +2507,7 @@ async function addDrafts(){
       if (d.kind === 'notice') { await api.addNotice({ text:d.text, until:d.until }); continue; }
       if (d.kind === 'cycle') { if (cycOwner()) { if (d.act === 'end') await cycEnd(d.date); else await cycStart(d.date); } continue; }
       if (d.kind === 'work') await api.setWork(d.date, { course:d.course });
-      else await api.addEvent({ date:d.date, start:d.start||'', end:d.end||'', title:d.title, cat:catFromPeople(d.people), people:d.people, memo:'' });
+      else await api.addEvent({ date:d.date, ...(d.endDate ? { endDate:d.endDate } : {}), start:d.start||'', end:d.end||'', title:d.title, cat:catFromPeople(d.people), people:d.people, memo:'' });
     }
     $('#quick').value = ''; state.drafts = []; renderPreview(); autosize();
     if (ds.length === 1 && ds[0].kind === 'cycle') { $('#quick').value = ''; state.drafts = []; renderPreview(); autosize(); return; }
@@ -2553,7 +2581,8 @@ function editEvent(id, ds){
     <div class="fld"><label for="f_title">내용</label><input id="f_title" value="${esc(e.title)}" placeholder="예: 피아노 학원" ${dis}></div>
     ${emojiField(e.emoji, ro)}
     <div class="fld"><label>누구 일정? (여러 명 선택 가능) <span id="f_who" style="color:var(--ink);font-weight:600"></span></label><div class="catpick">${PERSONS.map(k=>`<button data-person="${k}" style="--c:${catVar(k)}" aria-pressed="${peopleOf(e).includes(k)}" ${dis}>${esc(catLabel(k))}</button>`).join('')}<button data-allp style="--c:${catVar('family')}" ${dis}>가족 모두</button></div></div>
-    <div class="fld"><label for="f_date">날짜</label><input id="f_date" type="date" value="${e.date}" ${dis}></div>
+    <div class="row2"><div class="fld"><label for="f_date">날짜</label><input id="f_date" type="date" value="${e.date}" ${dis}></div><div class="fld"><label for="f_end">끝나는 날 (여행·휴가)</label><input id="f_end" type="date" value="${isSpan(e) ? evEnd(e) : ''}" min="${e.date}" ${dis}></div></div>
+    <div class="help" id="f_span" style="margin:-4px 0 6px">${isSpan(e) ? spanLabel(e) : '하루 일정이면 비워 두세요'}</div>
     <div class="row2"><div class="fld"><label for="f_s">시작 (비우면 하루 종일)</label><input id="f_s" type="time" value="${e.start||''}" ${dis}></div><div class="fld"><label for="f_e">종료</label><input id="f_e" type="time" value="${e.end||''}" ${dis}></div></div>
     <div class="fld"><label for="f_memo">메모</label><textarea id="f_memo" rows="4" placeholder="장소, 준비물, 연락처 등" ${dis}>${esc(e.memo||'')}</textarea></div>
     <div class="fld"><label>사진 <span class="help">(최대 ${PH_MAX}장 · 누르면 크게 보여요)</span></label><div class="phs" id="f_ph"></div></div>
@@ -2571,6 +2600,9 @@ function editEvent(id, ds){
     }));
     root.querySelector('[data-allp]').addEventListener('click', () => { people = PERSONS.slice(); who(); });
     const ph = phEditor(root.querySelector('#f_ph'), e.photos || [], ro);
+    const fd = root.querySelector('#f_date'), fe = root.querySelector('#f_end'), fsp = root.querySelector('#f_span');
+    const spanUp = () => { fe.min = fd.value; if (fe.value && fe.value < fd.value) fe.value = ''; const x = { date:fd.value, endDate:fe.value }; fsp.textContent = fe.value && fe.value > fd.value ? spanLabel(x) : '하루 일정이면 비워 두세요'; };
+    fd.addEventListener('change', spanUp); fe.addEventListener('change', spanUp);
     if (ro) return;
     root.querySelector('#f_save').addEventListener('click', async () => {
       const title = root.querySelector('#f_title').value.trim();
@@ -2579,7 +2611,8 @@ function editEvent(id, ds){
       const sb = root.querySelector('#f_save'); sb.disabled = true; if (ph.pending()) sb.textContent = '사진 올리는 중…';
       try { ne.photos = await ph.commit(); } catch(err){ sb.disabled = false; sb.textContent = isNew ? '추가' : '저장'; fail(err); return; }
       if (!ne.photos.length) delete ne.photos;
-      try { isNew ? await api.addEvent(ne) : await api.setEvent(id, ne); closeSheet(); toast(isNew ? `${dLabel(ne.date)}에 추가했어요` : '저장했어요'); } catch(err){ fail(err); }
+      { const ed = root.querySelector('#f_end').value; if (ed && ed > ne.date) ne.endDate = ed; }
+      try { isNew ? await api.addEvent(ne) : await api.setEvent(id, ne); closeSheet(); toast(isNew ? `${isSpan(ne) ? spanLabel(ne) : dLabel(ne.date)}에 추가했어요` : '저장했어요'); } catch(err){ fail(err); }
     });
     const dl = root.querySelector('#f_del'); if (dl) armDelete(dl, async () => { try { await api.delEvent(id); (e.photos || []).forEach(p => db && db.doc('photos/' + p.id).delete().catch(() => {})); closeSheet(); toast('삭제했어요'); } catch(err){ fail(err); } });
   });
@@ -2846,7 +2879,7 @@ try { history.replaceState(null, '', '#' + viewHash()); } catch(e){}
 boot();
 if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); }); }
 /* 휴대폰에 오래 켜 둔 앱도 새 버전을 받도록: 화면에 돌아올 때·30분마다 확인 */
-const APP_VER = 'family-cal-v32';
+const APP_VER = 'family-cal-v33';
 async function checkUpdate(){
   try {
     const t = await (await fetch('sw.js?ts=' + Date.now(), { cache:'no-store' })).text();
